@@ -14,8 +14,13 @@ from . import samplers
 from .common import CommDataset
 from .datasets import DATASET_REGISTRY
 from .transforms import build_transforms
+from utils.class_aware import is_class_aware_enabled
 
 _root = os.getenv("REID_DATASETS", "../../data")
+
+
+def _uses_urban_class_csv(dataset_name):
+    return dataset_name in ('UrbanElementsReID', 'UrbanElementsReID_test')
 
 
 def build_reid_train_loader(cfg):
@@ -36,24 +41,30 @@ def build_reid_train_loader(cfg):
     # load datasets
     _root = cfg.DATASETS.ROOT_DIR
     for d in cfg.DATASETS.TRAIN:
+        dataset_kwargs = {"root": _root, "combineall": cfg.DATASETS.COMBINEALL}
+        if is_class_aware_enabled(cfg) and _uses_urban_class_csv(d):
+            dataset_kwargs["class_aware"] = True
+            dataset_kwargs["class_aware_cfg"] = cfg.MODEL.CLASS_AWARE
         if d == 'CUHK03_NP':
             dataset = DATASET_REGISTRY.get('CUHK03')(root=_root, cuhk03_labeled=False)
         else:
-            dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL)
+            dataset = DATASET_REGISTRY.get(d)(**dataset_kwargs)
         if comm.is_main_process():
             dataset.show_train()
-        if len(dataset.train[0]) < 4:
-            for i, x in enumerate(dataset.train):
-                add_info = {}  # dictionary
+        for i, item in enumerate(dataset.train):
+            item = tuple(item)
+            if len(item) > 3 and isinstance(item[-1], dict):
+                add_info = dict(item[-1])
+                item = item[:-1]
+            else:
+                add_info = {}
 
-                if cfg.DATALOADER.CAMERA_TO_DOMAIN:
-                    add_info['domains'] = dataset.train[i][2]
-                    camera_all.append(dataset.train[i][2])
-                else:
-                    add_info['domains'] = int(domain_idx)
-                dataset.train[i] = list(dataset.train[i])
-                dataset.train[i].append(add_info)
-                dataset.train[i] = tuple(dataset.train[i])
+            if cfg.DATALOADER.CAMERA_TO_DOMAIN:
+                add_info['domains'] = item[2]
+                camera_all.append(item[2])
+            else:
+                add_info['domains'] = int(domain_idx)
+            dataset.train[i] = tuple(item) + (add_info,)
         domain_idx += 1
         train_items.extend(dataset.train)
 
@@ -76,8 +87,12 @@ def build_reid_train_loader(cfg):
 def build_reid_test_loader(cfg, dataset_name, opt=None, flag_test=True, shuffle=False, only_gallery=False, only_query=False, eval_time=False):
     test_transforms = build_transforms(cfg, is_train=False)
     _root = cfg.DATASETS.ROOT_DIR
+    dataset_kwargs = {"root": _root}
+    if is_class_aware_enabled(cfg) and _uses_urban_class_csv(dataset_name):
+        dataset_kwargs["class_aware"] = True
+        dataset_kwargs["class_aware_cfg"] = cfg.MODEL.CLASS_AWARE
     if opt is None:
-        dataset = DATASET_REGISTRY.get(dataset_name)(root=_root)
+        dataset = DATASET_REGISTRY.get(dataset_name)(**dataset_kwargs)
         if comm.is_main_process():
             if flag_test:
                 dataset.show_test()

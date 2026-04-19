@@ -20,10 +20,8 @@ class Dataset(object):
     def __init__(self, train, query, gallery, transform=None, mode='train',
                  combineall=False, verbose=True, **kwargs):
         self.train = train
-        self.query = query
-        self.gallery = gallery
-        self.query = [tuple(q_tuple)+({'q_or_g': 'query'},) for q_tuple in self.query]
-        self.gallery = [tuple(g_tuple)+({'q_or_g': 'gallery'},) for g_tuple in self.gallery]
+        self.query = [self._with_subset_info(q_tuple, 'query') for q_tuple in query]
+        self.gallery = [self._with_subset_info(g_tuple, 'gallery') for g_tuple in gallery]
         self.transform = transform
         self.mode = mode
         self.combineall = combineall
@@ -48,6 +46,15 @@ class Dataset(object):
 
         # if self.verbose:
         #     self.show_summary()
+
+    @staticmethod
+    def _with_subset_info(item, subset):
+        item = tuple(item)
+        if len(item) > 3 and isinstance(item[-1], dict):
+            metadata = dict(item[-1])
+            metadata['q_or_g'] = subset
+            return tuple(item[:-1]) + (metadata,)
+        return item + ({'q_or_g': subset},)
 
     def __getitem__(self, index):
         raise NotImplementedError

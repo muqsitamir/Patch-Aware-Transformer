@@ -1,4 +1,43 @@
 __pycache__
 tb_log
 .vscode
-*.yml
+# *.yml
+# datasets
+*.zip
+*.tar
+*.gz
+
+# model checkpoints / large artifacts
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.npy
+*.npz
+
+
+# experiment outputs
+track_outputs/
+output/
+outputs/
+runs/
+tb_log/
+wandb/
+mlruns/
+
+# caches
+__pycache__/
+*.pyc
+*.pyo
+.cache/
+
+# local envs
+.env
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+logs/

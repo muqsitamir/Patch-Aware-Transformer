@@ -12,7 +12,7 @@ def make_optimizer(cfg, model):
             lr = cfg.SOLVER.BASE_LR * cfg.SOLVER.BIAS_LR_FACTOR
             weight_decay = cfg.SOLVER.WEIGHT_DECAY_BIAS
         if cfg.SOLVER.LARGE_FC_LR:
-            if "classifier" in key or "arcface" in key:
+            if "classifier" in key or "arcface" in key or "semantic_head" in key:
                 lr = cfg.SOLVER.BASE_LR * 2
                 print('Using two times learning rate for fc ')
 

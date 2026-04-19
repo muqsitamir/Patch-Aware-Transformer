@@ -4,6 +4,7 @@ import torch
 import numpy as np
 import os
 from utils.reranking import re_ranking
+from utils.class_aware import apply_class_distance_penalty, class_distance_penalty_matrix
 
 
 def euclidean_distance(qf, gf):
@@ -90,23 +91,31 @@ def eval_func(distmat, q_pids, g_pids, q_camids, g_camids, max_rank=50):
 
 
 class R1_mAP_eval():
-    def __init__(self, num_query, max_rank=50, feat_norm=True, reranking=False):
+    def __init__(self, num_query, max_rank=50, feat_norm=True, reranking=False, class_penalty=0.0):
         super(R1_mAP_eval, self).__init__()
         self.num_query = num_query
         self.max_rank = max_rank
         self.feat_norm = feat_norm
         self.reranking = reranking
+        self.class_penalty = class_penalty
 
     def reset(self):
         self.feats = []
         self.pids = []
         self.camids = []
+        self.pred_classes = []
 
     def update(self, output):  # called once for each batch
-        feat, pid, camid = output
+        if len(output) == 4:
+            feat, pid, camid, pred_class = output
+        else:
+            feat, pid, camid = output
+            pred_class = None
         self.feats.append(feat.cpu())
         self.pids.extend(np.asarray(pid))
         self.camids.extend(np.asarray(camid))
+        if pred_class is not None:
+            self.pred_classes.extend(np.asarray(pred_class))
 
     def compute(self):  # called after each epoch
         feats = torch.cat(self.feats, dim=0)
@@ -122,17 +131,29 @@ class R1_mAP_eval():
         g_pids = np.asarray(self.pids[self.num_query:])
 
         g_camids = np.asarray(self.camids[self.num_query:])
+        q_classes = None
+        g_classes = None
+        penalty_matrix = None
+        if self.pred_classes:
+            q_classes = np.asarray(self.pred_classes[:self.num_query])
+            g_classes = np.asarray(self.pred_classes[self.num_query:])
+            penalty_matrix = class_distance_penalty_matrix(q_classes, g_classes, self.class_penalty)
+
         if self.reranking:
             print('=> Enter reranking')
             # distmat = re_ranking(qf, gf, k1=20, k2=6, lambda_value=0.3)
-            distmat = re_ranking(qf, gf, k1=50, k2=15, lambda_value=0.3)
+            local_distmat = None
+            if penalty_matrix is not None:
+                local_distmat = np.zeros((feats.shape[0], feats.shape[0]), dtype=np.float32)
+                local_distmat[:self.num_query, self.num_query:] = penalty_matrix
+                local_distmat[self.num_query:, :self.num_query] = penalty_matrix.T
+            distmat = re_ranking(qf, gf, k1=50, k2=15, lambda_value=0.3, local_distmat=local_distmat)
 
         else:
             # print('=> Computing DistMat with euclidean_distance')
             distmat = euclidean_distance(qf, gf)
+            distmat = apply_class_distance_penalty(distmat, q_classes, g_classes, self.class_penalty)
         cmc, mAP = eval_func(distmat, q_pids, g_pids, q_camids, g_camids)
 
         return cmc, mAP, distmat, self.pids, self.camids, qf, gf
-
-
 

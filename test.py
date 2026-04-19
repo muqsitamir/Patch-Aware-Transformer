@@ -6,6 +6,7 @@ from model import make_model
 from processor.part_attention_vit_processor import do_inference as do_inf_pat
 from processor.ori_vit_processor_with_amp import do_inference as do_inf
 from utils.logger import setup_logger
+from utils.class_aware import infer_num_semantic_classes
 
 
 if __name__ == "__main__":
@@ -41,7 +42,7 @@ if __name__ == "__main__":
 
     os.environ['CUDA_VISIBLE_DEVICES'] = cfg.MODEL.DEVICE_ID
 
-    model = make_model(cfg, cfg.MODEL.NAME, 0,0,0)
+    model = make_model(cfg, cfg.MODEL.NAME, 0,0,0, num_semantic_class=infer_num_semantic_classes(cfg))
     model.load_param(cfg.TEST.WEIGHT)
 
     for testname in cfg.DATASETS.TEST:

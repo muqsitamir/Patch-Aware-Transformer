@@ -5,6 +5,7 @@ import random
 from model.backbones.vit_pytorch import deit_tiny_patch16_224_TransReID, part_attention_deit_small, part_attention_deit_tiny, part_attention_vit_base, part_attention_vit_base_p32, part_attention_vit_large, part_attention_vit_small, vit_base_patch32_224_TransReID, vit_large_patch16_224_TransReID
 import torch
 import torch.nn as nn
+from utils.class_aware import is_class_aware_enabled
 
 from .backbones.resnet import BasicBlock, ResNet, Bottleneck
 from .backbones import vit_base_patch16_224_TransReID, vit_small_patch16_224_TransReID, deit_small_patch16_224_TransReID
@@ -50,7 +51,7 @@ def weights_init_classifier(m):
 
 
 class Backbone(nn.Module):
-    def __init__(self, model_name, num_classes, cfg):
+    def __init__(self, model_name, num_classes, cfg, num_semantic_classes=0):
         super(Backbone, self).__init__()
         last_stride = cfg.MODEL.LAST_STRIDE
         model_path_base = cfg.MODEL.PRETRAIN_PATH
@@ -109,15 +110,20 @@ class Backbone(nn.Module):
 
         self.gap = nn.AdaptiveAvgPool2d(1)
         self.num_classes = num_classes
+        self.num_semantic_classes = int(num_semantic_classes)
+        self.class_aware_enabled = is_class_aware_enabled(cfg) and self.num_semantic_classes > 0
 
         self.classifier = nn.Linear(self.in_planes, self.num_classes, bias=False)
         self.classifier.apply(weights_init_classifier)
+        if self.class_aware_enabled:
+            self.semantic_head = nn.Linear(self.in_planes, self.num_semantic_classes, bias=False)
+            self.semantic_head.apply(weights_init_classifier)
 
         self.bottleneck = nn.BatchNorm1d(self.in_planes)
         self.bottleneck.bias.requires_grad_(False)
         self.bottleneck.apply(weights_init_kaiming)
 
-    def forward(self, x, label=None):  # label is unused if self.cos_layer == 'no'
+    def forward(self, x, label=None, return_class_logits=False):  # label is unused if self.cos_layer == 'no'
         x = self.base(x) # B, C, h, w
         
         global_feat = nn.functional.avg_pool2d(x, x.shape[2:4])
@@ -134,8 +140,13 @@ class Backbone(nn.Module):
                 cls_score = self.arcface(feat, label)
             else:
                 cls_score = self.classifier(feat)
+            if return_class_logits and self.class_aware_enabled:
+                return cls_score, global_feat, self.semantic_head(feat)
             return cls_score, global_feat
         else:
+            output_feat = feat if self.neck_feat == 'after' else global_feat
+            if return_class_logits and self.class_aware_enabled:
+                return output_feat, self.semantic_head(feat)
             if self.neck_feat == 'after':
                 return feat
             else:
@@ -145,16 +156,30 @@ class Backbone(nn.Module):
         param_dict = torch.load(trained_path)
         if 'state_dict' in param_dict:
             param_dict = param_dict['state_dict']
+        model_dict = self.state_dict()
+        loaded_semantic_head = not self.class_aware_enabled
         for i in param_dict:
-            if 'classifier' in i: # drop classifier
+            key = i.replace('module.', '')
+            if 'classifier' in key: # drop classifier
                 continue
-            self.state_dict()[i].copy_(param_dict[i])
+            if key not in model_dict or model_dict[key].shape != param_dict[i].shape:
+                continue
+            model_dict[key].copy_(param_dict[i])
+            if key.startswith('semantic_head.'):
+                loaded_semantic_head = True
+        if self.class_aware_enabled and not loaded_semantic_head:
+            print('Semantic head not found in checkpoint; disabling class-aware inference for this model.')
+            self.class_aware_enabled = False
         print('Loading pretrained model from {}'.format(trained_path))
 
     def load_param_finetune(self, model_path):
         param_dict = torch.load(model_path)
+        model_dict = self.state_dict()
         for i in param_dict:
-            self.state_dict()[i].copy_(param_dict[i])
+            key = i.replace('module.', '')
+            if key not in model_dict or model_dict[key].shape != param_dict[i].shape:
+                continue
+            model_dict[key].copy_(param_dict[i])
         print('Loading pretrained model for finetuning from {}'.format(model_path))
 
     def compute_num_params(self):
@@ -164,7 +189,7 @@ class Backbone(nn.Module):
 
 
 class build_vit(nn.Module):
-    def __init__(self, num_classes, cfg, factory):
+    def __init__(self, num_classes, cfg, factory, num_semantic_classes=0):
         super(build_vit, self).__init__()
         self.cfg = cfg
         model_path_base = cfg.MODEL.PRETRAIN_PATH
@@ -180,6 +205,8 @@ class build_vit(nn.Module):
 
         self.gap = nn.AdaptiveAvgPool2d(1)
         self.num_classes = num_classes
+        self.num_semantic_classes = int(num_semantic_classes)
+        self.class_aware_enabled = is_class_aware_enabled(cfg) and self.num_semantic_classes > 0
 
         self.base = factory[cfg.MODEL.TRANSFORMER_TYPE]\
             (img_size=cfg.INPUT.SIZE_TRAIN,
@@ -199,11 +226,14 @@ class build_vit(nn.Module):
             
         self.classifier = nn.Linear(self.in_planes, self.num_classes, bias=False)
         self.classifier.apply(weights_init_classifier)
+        if self.class_aware_enabled:
+            self.semantic_head = nn.Linear(self.in_planes, self.num_semantic_classes, bias=False)
+            self.semantic_head.apply(weights_init_classifier)
         self.bottleneck = nn.BatchNorm1d(self.in_planes)
         self.bottleneck.bias.requires_grad_(False)
         self.bottleneck.apply(weights_init_kaiming)
 
-    def forward(self, x):
+    def forward(self, x, return_class_logits=False):
         x = self.base(x) # B, N, C
         global_feat = x[:, 0] # cls token for global feature
 
@@ -211,24 +241,43 @@ class build_vit(nn.Module):
 
         if self.training:
             cls_score = self.classifier(feat)
+            if return_class_logits and self.class_aware_enabled:
+                return cls_score, global_feat, self.semantic_head(feat)
             return cls_score, global_feat
         else:
-            return feat if self.neck_feat == 'after' else global_feat
+            output_feat = feat if self.neck_feat == 'after' else global_feat
+            if return_class_logits and self.class_aware_enabled:
+                return output_feat, self.semantic_head(feat)
+            return output_feat
 
     def load_param(self, trained_path):
         param_dict = torch.load(trained_path)
+        model_dict = self.state_dict()
+        loaded_semantic_head = not self.class_aware_enabled
         for i in param_dict:
-            if 'classifier' in i: # drop classifier
+            key = i.replace('module.', '')
+            if 'classifier' in key: # drop classifier
                 continue
-            if 'bottleneck' in i:
+            if 'bottleneck' in key:
                 continue
-            self.state_dict()[i.replace('module.', '')].copy_(param_dict[i])
+            if key not in model_dict or model_dict[key].shape != param_dict[i].shape:
+                continue
+            model_dict[key].copy_(param_dict[i])
+            if key.startswith('semantic_head.'):
+                loaded_semantic_head = True
+        if self.class_aware_enabled and not loaded_semantic_head:
+            print('Semantic head not found in checkpoint; disabling class-aware inference for this model.')
+            self.class_aware_enabled = False
         print('Loading trained model from {}'.format(trained_path))
 
     def load_param_finetune(self, model_path):
         param_dict = torch.load(model_path)
+        model_dict = self.state_dict()
         for i in param_dict:
-            self.state_dict()[i].copy_(param_dict[i])
+            key = i.replace('module.', '')
+            if key not in model_dict or model_dict[key].shape != param_dict[i].shape:
+                continue
+            model_dict[key].copy_(param_dict[i])
         print('Loading pretrained model for finetuning from {}'.format(model_path))
 
     def compute_num_params(self):
@@ -240,7 +289,7 @@ class build_vit(nn.Module):
 part attention vit
 '''
 class build_part_attention_vit(nn.Module):
-    def __init__(self, num_classes, cfg, factory, pretrain_tag='imagenet'):
+    def __init__(self, num_classes, cfg, factory, pretrain_tag='imagenet', num_semantic_classes=0):
         super().__init__()
         self.cfg = cfg
         model_path_base = cfg.MODEL.PRETRAIN_PATH
@@ -260,6 +309,8 @@ class build_part_attention_vit(nn.Module):
         self.gap = nn.AdaptiveAvgPool2d(1)
 
         self.num_classes = num_classes
+        self.num_semantic_classes = int(num_semantic_classes)
+        self.class_aware_enabled = is_class_aware_enabled(cfg) and self.num_semantic_classes > 0
 
         self.base = factory[cfg.MODEL.TRANSFORMER_TYPE]\
             (img_size=cfg.INPUT.SIZE_TRAIN,
@@ -283,8 +334,11 @@ class build_part_attention_vit(nn.Module):
         self.bottleneck.apply(weights_init_kaiming)
         self.classifier = nn.Linear(self.in_planes, self.num_classes, bias=False)
         self.classifier.apply(weights_init_classifier)
+        if self.class_aware_enabled:
+            self.semantic_head = nn.Linear(self.in_planes, self.num_semantic_classes, bias=False)
+            self.semantic_head.apply(weights_init_classifier)
 
-    def forward(self, x):
+    def forward(self, x, return_class_logits=False):
         layerwise_tokens = self.base(x) # B, N, C
         layerwise_cls_tokens = [t[:, 0] for t in layerwise_tokens] # cls token
         part_feat_list = layerwise_tokens[-1][:, 1: 4] # 3, 768
@@ -294,22 +348,41 @@ class build_part_attention_vit(nn.Module):
 
         if self.training:
             cls_score = self.classifier(feat)
+            if return_class_logits and self.class_aware_enabled:
+                return cls_score, layerwise_cls_tokens, layerwise_part_tokens, self.semantic_head(feat)
             return cls_score, layerwise_cls_tokens, layerwise_part_tokens
         else:
-            return feat if self.neck_feat == 'after' else layerwise_cls_tokens[-1]
+            output_feat = feat if self.neck_feat == 'after' else layerwise_cls_tokens[-1]
+            if return_class_logits and self.class_aware_enabled:
+                return output_feat, self.semantic_head(feat)
+            return output_feat
 
     def load_param(self, trained_path):
         param_dict = torch.load(trained_path)
+        model_dict = self.state_dict()
+        loaded_semantic_head = not self.class_aware_enabled
         for i in param_dict:
-            if 'classifier' in i: # drop classifier
+            key = i.replace('module.', '')
+            if 'classifier' in key: # drop classifier
                 continue
-            self.state_dict()[i.replace('module.', '')].copy_(param_dict[i])
+            if key not in model_dict or model_dict[key].shape != param_dict[i].shape:
+                continue
+            model_dict[key].copy_(param_dict[i])
+            if key.startswith('semantic_head.'):
+                loaded_semantic_head = True
+        if self.class_aware_enabled and not loaded_semantic_head:
+            print('Semantic head not found in checkpoint; disabling class-aware inference for this model.')
+            self.class_aware_enabled = False
         print('Loading trained model from {}'.format(trained_path))
 
     def load_param_finetune(self, model_path):
         param_dict = torch.load(model_path)
+        model_dict = self.state_dict()
         for i in param_dict:
-            self.state_dict()[i].copy_(param_dict[i])
+            key = i.replace('module.', '')
+            if key not in model_dict or model_dict[key].shape != param_dict[i].shape:
+                continue
+            model_dict[key].copy_(param_dict[i])
         print('Loading pretrained model for finetuning from {}'.format(model_path))
 
     def compute_num_params(self):
@@ -337,15 +410,15 @@ __factory_LAT_type = {
     'deit_tiny_patch16_224_TransReID': part_attention_deit_tiny,
 }
 
-def make_model(cfg, modelname, num_class, sd_flag=False, head_flag=False, camera_num=None, view_num=None):
+def make_model(cfg, modelname, num_class, sd_flag=False, head_flag=False, camera_num=None, view_num=None, num_semantic_class=0):
     if modelname == 'vit':
-        model = build_vit(num_class, cfg, __factory_T_type)
+        model = build_vit(num_class, cfg, __factory_T_type, num_semantic_classes=num_semantic_class)
         print('===========building vit===========')
     elif modelname == 'part_attention_vit':
-        model = build_part_attention_vit(num_class, cfg, __factory_LAT_type)
+        model = build_part_attention_vit(num_class, cfg, __factory_LAT_type, num_semantic_classes=num_semantic_class)
         print('===========building our part attention vit===========')
     else:
-        model = Backbone(modelname, num_class, cfg)
+        model = Backbone(modelname, num_class, cfg, num_semantic_classes=num_semantic_class)
         print('===========building ResNet===========')
     ### count params
     model.compute_num_params()

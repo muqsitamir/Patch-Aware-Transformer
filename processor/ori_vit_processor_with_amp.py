@@ -10,6 +10,17 @@ from torch.cuda import amp
 import torch.distributed as dist
 from data.build_DG_dataloader import build_reid_test_loader, build_reid_train_loader
 from torch.utils.tensorboard import SummaryWriter
+from utils.class_aware import (
+    get_batch_class_targets,
+    get_class_distance_penalty,
+    get_class_loss_weight,
+    model_is_class_aware,
+    model_num_semantic_classes,
+    semantic_accuracy,
+    semantic_classification_loss,
+    split_inference_output,
+    use_metadata_classes_for_retrieval,
+)
 
 def ori_vit_do_train_with_amp(cfg,
              model,
@@ -40,6 +51,8 @@ def ori_vit_do_train_with_amp(cfg,
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], find_unused_parameters=True)
 
     loss_meter = AverageMeter()
+    class_loss_meter = AverageMeter()
+    class_acc_meter = AverageMeter()
     acc_meter = AverageMeter()
 
     evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM)
@@ -51,6 +64,8 @@ def ori_vit_do_train_with_amp(cfg,
     for epoch in range(1, epochs + 1):
         start_time = time.time()
         loss_meter.reset()
+        class_loss_meter.reset()
+        class_acc_meter.reset()
         acc_meter.reset()
         evaluator.reset()
         scheduler.step(epoch)
@@ -68,6 +83,10 @@ def ori_vit_do_train_with_amp(cfg,
             target = vid.to(device)
             target_cam = target_cam.to(device)
             t_domains = t_domains.to(device)
+            class_targets = get_batch_class_targets(informations, device)
+            use_class_aware = model_is_class_aware(model)
+            class_logits = None
+            class_loss = None
 
             model.to(device)
             with amp.autocast(enabled=True):
@@ -75,8 +94,16 @@ def ori_vit_do_train_with_amp(cfg,
                     score, feat, domains = model(img, domains=t_domains)
                     loss = loss_fn(score, feat, target, domains, t_domains)
                 else:
-                    score, feat = model(img)
-                    loss = loss_fn(score, feat, target)
+                    if use_class_aware:
+                        score, feat, class_logits = model(img, return_class_logits=True)
+                    else:
+                        score, feat = model(img)
+                    reid_loss = loss_fn(score, feat, target)
+                    class_loss = semantic_classification_loss(class_logits, class_targets)
+                    if class_loss is not None:
+                        loss = reid_loss + get_class_loss_weight(cfg) * class_loss
+                    else:
+                        loss = reid_loss
 
             scaler.scale(loss).backward()
 
@@ -90,14 +117,27 @@ def ori_vit_do_train_with_amp(cfg,
 
             loss_meter.update(loss.item(), img.shape[0])
             acc_meter.update(acc, 1)
+            if use_class_aware and class_logits is not None and class_loss is not None:
+                class_loss_meter.update(class_loss.item(), img.shape[0])
+                class_acc = semantic_accuracy(class_logits, class_targets)
+                if class_acc is not None:
+                    class_acc_meter.update(class_acc.item(), 1)
 
             torch.cuda.synchronize()
             if (n_iter + 1) % log_period == 0:
-                logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Acc: {:.3f}, Base Lr: {:.2e}"
-                .format(epoch, n_iter+1, len(train_loader),
-                loss_meter.avg, acc_meter.avg, scheduler._get_lr(epoch)[0]))
+                if use_class_aware:
+                    logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Class Loss: {:.3f}, Acc: {:.3f}, Class Acc: {:.3f}, Base Lr: {:.2e}"
+                    .format(epoch, n_iter+1, len(train_loader),
+                    loss_meter.avg, class_loss_meter.avg, acc_meter.avg, class_acc_meter.avg, scheduler._get_lr(epoch)[0]))
+                else:
+                    logger.info("Epoch[{}] Iteration[{}/{}] Loss: {:.3f}, Acc: {:.3f}, Base Lr: {:.2e}"
+                    .format(epoch, n_iter+1, len(train_loader),
+                    loss_meter.avg, acc_meter.avg, scheduler._get_lr(epoch)[0]))
                 tbWriter.add_scalar('train/loss', loss_meter.avg, n_iter+1+(epoch-1)*len(train_loader))
                 tbWriter.add_scalar('train/acc', acc_meter.avg, n_iter+1+(epoch-1)*len(train_loader))
+                if use_class_aware:
+                    tbWriter.add_scalar('train/class_loss', class_loss_meter.avg, n_iter+1+(epoch-1)*len(train_loader))
+                    tbWriter.add_scalar('train/class_acc', class_acc_meter.avg, n_iter+1+(epoch-1)*len(train_loader))
 
         end_time = time.time()
         time_per_batch = (end_time - start_time) / (n_iter + 1)
@@ -146,7 +186,7 @@ def ori_vit_do_train_with_amp(cfg,
 
     # final evaluation
     load_path = os.path.join(log_path, cfg.MODEL.NAME + '_{}.pth'.format(best_index))
-    eval_model = make_model(cfg, modelname=cfg.MODEL.NAME, num_class=0, camera_num=None, view_num=None)
+    eval_model = make_model(cfg, modelname=cfg.MODEL.NAME, num_class=0, camera_num=None, view_num=None, num_semantic_class=model_num_semantic_classes(model))
     eval_model.load_param(load_path)
     print('load weights from {}_{}.pth'.format(cfg.MODEL.NAME, best_index))
     for testname in cfg.DATASETS.TEST:
@@ -174,7 +214,7 @@ def do_inference(cfg,
     logger = logging.getLogger("PAT.test")
     logger.info("Enter inferencing")
 
-    evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM)
+    evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM, class_penalty=get_class_distance_penalty(cfg))
 
     evaluator.reset()
 
@@ -185,6 +225,8 @@ def do_inference(cfg,
         model.to(device)
 
     model.eval()
+    use_class_aware = model_is_class_aware(model)
+    use_metadata_classes = use_metadata_classes_for_retrieval(cfg)
     img_path_list = []
     t0 = time.time()
     for n_iter, informations in enumerate(val_loader):
@@ -196,8 +238,18 @@ def do_inference(cfg,
         with torch.no_grad():
             img = img.to(device)
             # camids = camids.to(device)
-            feat = model(img)
-            evaluator.update((feat, pid, camids))
+            if use_metadata_classes:
+                feat = model(img)
+                pred_classes = get_batch_class_targets(informations)
+                evaluator.update((feat, pid, camids, pred_classes))
+            elif use_class_aware:
+                output = model(img, return_class_logits=True)
+                feat, class_logits = split_inference_output(output)
+                pred_classes = class_logits.argmax(1).cpu() if class_logits is not None else None
+                evaluator.update((feat, pid, camids, pred_classes))
+            else:
+                feat = model(img)
+                evaluator.update((feat, pid, camids))
             img_path_list.extend(imgpath)
 
     cmc, mAP, _, _, _, _, _ = evaluator.compute()

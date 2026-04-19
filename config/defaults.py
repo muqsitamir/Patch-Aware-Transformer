@@ -74,6 +74,17 @@ _C.MODEL.CLUSTER_K = 10 # num of clusters
 _C.MODEL.SOFT_WEIGHT = 0.5
 _C.MODEL.SOFT_LAMBDA = 0.5
 
+# semantic class-aware training and retrieval
+_C.MODEL.CLASS_AWARE = CN()
+_C.MODEL.CLASS_AWARE.ENABLED = False
+_C.MODEL.CLASS_AWARE.NUM_CLASSES = 0
+_C.MODEL.CLASS_AWARE.LOSS_WEIGHT = 1.0
+_C.MODEL.CLASS_AWARE.DISTANCE_PENALTY = 0.0
+_C.MODEL.CLASS_AWARE.TRAIN_CSV = "train_classes.csv"
+_C.MODEL.CLASS_AWARE.QUERY_CSV = "query_classes.csv"
+_C.MODEL.CLASS_AWARE.TEST_CSV = "test_classes.csv"
+_C.MODEL.CLASS_AWARE.RETRIEVAL_SOURCE = "predicted"
+
 #-----------------------------------------------------------------------------
 # INPUT
 # -----------------------------------------------------------------------------
