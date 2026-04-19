@@ -23,6 +23,18 @@ def _uses_urban_class_csv(dataset_name):
     return dataset_name in ('UrbanElementsReID', 'UrbanElementsReID_test')
 
 
+def _dataset_root(cfg):
+    dataset_mode = str(getattr(cfg.DATASETS, "MODE", "challenge_only")).lower()
+    if dataset_mode == "challenge_only":
+        return cfg.DATASETS.ROOT_DIR
+    if dataset_mode == "external_only":
+        external_root = str(getattr(cfg.DATASETS, "EXTERNAL_ROOT", ""))
+        if not external_root:
+            raise ValueError("DATASETS.EXTERNAL_ROOT must be set when DATASETS.MODE is 'external_only'")
+        return external_root
+    raise ValueError("Unsupported DATASETS.MODE '{}'. Expected 'challenge_only' or 'external_only'.".format(dataset_mode))
+
+
 def build_reid_train_loader(cfg):
     gettrace = getattr(sys, 'gettrace', None)
     if gettrace():
@@ -39,7 +51,7 @@ def build_reid_train_loader(cfg):
     camera_all = list()
 
     # load datasets
-    _root = cfg.DATASETS.ROOT_DIR
+    _root = _dataset_root(cfg)
     for d in cfg.DATASETS.TRAIN:
         dataset_kwargs = {"root": _root, "combineall": cfg.DATASETS.COMBINEALL}
         if is_class_aware_enabled(cfg) and _uses_urban_class_csv(d):
@@ -86,7 +98,7 @@ def build_reid_train_loader(cfg):
 
 def build_reid_test_loader(cfg, dataset_name, opt=None, flag_test=True, shuffle=False, only_gallery=False, only_query=False, eval_time=False):
     test_transforms = build_transforms(cfg, is_train=False)
-    _root = cfg.DATASETS.ROOT_DIR
+    _root = _dataset_root(cfg)
     dataset_kwargs = {"root": _root}
     if is_class_aware_enabled(cfg) and _uses_urban_class_csv(dataset_name):
         dataset_kwargs["class_aware"] = True

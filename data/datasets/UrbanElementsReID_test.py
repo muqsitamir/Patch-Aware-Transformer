@@ -75,14 +75,16 @@ class UrbanElementsReID_test(ImageDataset):
     def _readCSV_eval_(self, csv_dir):
         camids = []
         imageNames = []
+        pids = []
         with open(csv_dir, newline='') as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
             next(reader)
             for row in reader:
                 camids.append(row[0])
                 imageNames.append(str(row[1]))
+                pids.append(int(row[2]) if len(row) > 2 and row[2] != '' else -1)
         
-        return list(zip(camids, imageNames))
+        return list(zip(camids, imageNames, pids))
 
     def _class_cfg_value(self, key, default):
         if self.class_aware_cfg is None:
@@ -139,9 +141,9 @@ class UrbanElementsReID_test(ImageDataset):
         xml_file = self._readCSV_eval_(xml_dir)
         image_to_class = self._read_class_map(class_csv)
         
-        for cid, imageName in xml_file:
+        for cid, imageName, pid in xml_file:
             camid = int(cid[1:])
-            item = (osp.join(dir_path, imageName), -1, camid)
+            item = (osp.join(dir_path, imageName), pid, camid)
             if self.class_aware:
                 item = add_class_metadata(item, imageName, image_to_class, self.class_to_idx)
             dataset.append(item)

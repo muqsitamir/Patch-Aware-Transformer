@@ -26,6 +26,8 @@ _C.MODEL.NAME = 'vit'
 _C.MODEL.LAST_STRIDE = 1
 # Path to pretrained model of backbone
 _C.MODEL.PRETRAIN_PATH = ""
+# Full checkpoint path used when MODEL.PRETRAIN_CHOICE == "finetune".
+_C.MODEL.FINETUNE_PATH = ""
 
 # Use ImageNet pretrained model to initialize backbone or use self trained model to initialize the whole model
 # Options: 'imagenet' , 'self' , 'finetune'
@@ -139,6 +141,10 @@ _C.DATASETS.TRAIN = ('Market1501',)
 _C.DATASETS.TEST = ('DukeMTMC',)
 # Root directory where datasets should be used (and downloaded if not found)
 _C.DATASETS.ROOT_DIR = ('../data')
+# Dataset selection mode. "challenge_only" keeps existing behavior;
+# "external_only" trains/evaluates loaders against DATASETS.EXTERNAL_ROOT.
+_C.DATASETS.MODE = 'challenge_only'
+_C.DATASETS.EXTERNAL_ROOT = ''
 # combine both train and test sets
 _C.DATASETS.COMBINEALL = False
 

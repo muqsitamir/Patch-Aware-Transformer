@@ -15,6 +15,18 @@ from config import cfg
 import loss as Patchloss
 from utils.class_aware import infer_num_semantic_classes, is_class_aware_enabled
 
+
+def _load_finetune_checkpoint_if_requested(cfg, model):
+    if str(cfg.MODEL.PRETRAIN_CHOICE).lower() != 'finetune':
+        return
+
+    finetune_path = str(getattr(cfg.MODEL, 'FINETUNE_PATH', '') or cfg.MODEL.PRETRAIN_PATH)
+    if not finetune_path:
+        raise ValueError("MODEL.FINETUNE_PATH must be set when MODEL.PRETRAIN_CHOICE is 'finetune'")
+    if not os.path.isfile(finetune_path):
+        raise FileNotFoundError("Finetune checkpoint not found: {}".format(finetune_path))
+    model.load_param_finetune(finetune_path)
+
 def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
@@ -77,6 +89,7 @@ if __name__ == '__main__':
         num_semantic_classes = max(num_semantic_classes, loader_semantic_classes)
     model_name = cfg.MODEL.NAME
     model = make_model(cfg, modelname=model_name, num_class=num_classes, camera_num=None, view_num=None, num_semantic_class=num_semantic_classes)
+    _load_finetune_checkpoint_if_requested(cfg, model)
     if cfg.MODEL.FREEZE_PATCH_EMBED and 'resnet' not in cfg.MODEL.NAME: # trick from moco v3
         model.base.patch_embed.proj.weight.requires_grad = False
         model.base.patch_embed.proj.bias.requires_grad = False

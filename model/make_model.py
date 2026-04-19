@@ -50,6 +50,38 @@ def weights_init_classifier(m):
             nn.init.constant_(m.bias, 0.0)
 
 
+def _load_finetune_params(model, model_path):
+    try:
+        param_dict = torch.load(model_path, map_location='cpu', weights_only=True)
+    except TypeError:
+        param_dict = torch.load(model_path, map_location='cpu')
+    if 'state_dict' in param_dict:
+        param_dict = param_dict['state_dict']
+
+    model_dict = model.state_dict()
+    loaded_keys = []
+    skipped_classifier_keys = []
+    skipped_keys = []
+    for i in param_dict:
+        key = i.replace('module.', '')
+        if key not in model_dict:
+            skipped_keys.append(key)
+            continue
+        if model_dict[key].shape != param_dict[i].shape:
+            if key.startswith('classifier.'):
+                skipped_classifier_keys.append(key)
+            else:
+                skipped_keys.append(key)
+            continue
+        model_dict[key].copy_(param_dict[i])
+        loaded_keys.append(key)
+
+    print('Loading pretrained model for finetuning from {}'.format(model_path))
+    print('Loaded {} matched parameter tensors; skipped {} tensors.'.format(len(loaded_keys), len(skipped_keys) + len(skipped_classifier_keys)))
+    if skipped_classifier_keys:
+        print('Reset ID classifier for finetuning due to shape mismatch: {}'.format(', '.join(skipped_classifier_keys)))
+
+
 class Backbone(nn.Module):
     def __init__(self, model_name, num_classes, cfg, num_semantic_classes=0):
         super(Backbone, self).__init__()
@@ -173,14 +205,7 @@ class Backbone(nn.Module):
         print('Loading pretrained model from {}'.format(trained_path))
 
     def load_param_finetune(self, model_path):
-        param_dict = torch.load(model_path)
-        model_dict = self.state_dict()
-        for i in param_dict:
-            key = i.replace('module.', '')
-            if key not in model_dict or model_dict[key].shape != param_dict[i].shape:
-                continue
-            model_dict[key].copy_(param_dict[i])
-        print('Loading pretrained model for finetuning from {}'.format(model_path))
+        _load_finetune_params(self, model_path)
 
     def compute_num_params(self):
         total = sum([param.nelement() for param in self.parameters()])
@@ -271,14 +296,7 @@ class build_vit(nn.Module):
         print('Loading trained model from {}'.format(trained_path))
 
     def load_param_finetune(self, model_path):
-        param_dict = torch.load(model_path)
-        model_dict = self.state_dict()
-        for i in param_dict:
-            key = i.replace('module.', '')
-            if key not in model_dict or model_dict[key].shape != param_dict[i].shape:
-                continue
-            model_dict[key].copy_(param_dict[i])
-        print('Loading pretrained model for finetuning from {}'.format(model_path))
+        _load_finetune_params(self, model_path)
 
     def compute_num_params(self):
         total = sum([param.nelement() for param in self.parameters()])
@@ -376,14 +394,7 @@ class build_part_attention_vit(nn.Module):
         print('Loading trained model from {}'.format(trained_path))
 
     def load_param_finetune(self, model_path):
-        param_dict = torch.load(model_path)
-        model_dict = self.state_dict()
-        for i in param_dict:
-            key = i.replace('module.', '')
-            if key not in model_dict or model_dict[key].shape != param_dict[i].shape:
-                continue
-            model_dict[key].copy_(param_dict[i])
-        print('Loading pretrained model for finetuning from {}'.format(model_path))
+        _load_finetune_params(self, model_path)
 
     def compute_num_params(self):
         total = sum([param.nelement() for param in self.parameters()])
