@@ -115,9 +115,9 @@ if __name__ == "__main__":
     for testname in cfg.DATASETS.TEST:
         val_loader, num_query = build_reid_test_loader(cfg, testname)
         if cfg.MODEL.NAME == 'part_attention_vit':
-            do_inf_pat(cfg, model, val_loader, num_query)
+            do_inf_pat(cfg, model, val_loader, num_query, dataset_name=testname)
         else:
-            do_inf(cfg, model, val_loader, num_query)
+            do_inf(cfg, model, val_loader, num_query, dataset_name=testname)
     with torch.no_grad():
         qf, gf, q_pred_classes, g_pred_classes = extract_feature(model, val_loader, num_query, cfg)
 

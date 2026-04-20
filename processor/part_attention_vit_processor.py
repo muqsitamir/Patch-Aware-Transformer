@@ -12,6 +12,11 @@ import torch.distributed as dist
 import torch.nn.functional as F
 from data.build_DG_dataloader import build_reid_test_loader, build_reid_train_loader
 from torch.utils.tensorboard import SummaryWriter
+from utils.eval_guard import (
+    dummy_eval_warning,
+    resolve_eval_dataset_name,
+    should_skip_eval_if_dummy_ids,
+)
 from utils.class_aware import (
     get_batch_class_targets,
     get_class_distance_penalty,
@@ -43,6 +48,8 @@ def part_attention_vit_do_train_with_amp(cfg,
 
     logger = logging.getLogger("PAT.train")
     logger.info('start training')
+    log_path = os.path.join(cfg.LOG_ROOT, cfg.LOG_NAME)
+    best_checkpoint_path = os.path.join(log_path, cfg.MODEL.NAME + '_best.pth')
     tb_path = os.path.join(cfg.TB_LOG_ROOT, cfg.LOG_NAME)
     tbWriter = SummaryWriter(tb_path)
     print("saving tblog to {}".format(tb_path))
@@ -84,7 +91,9 @@ def part_attention_vit_do_train_with_amp(cfg,
         print('initialization done')
     
     best_mAP = 0.0
-    best_index = 1
+    best_index = None
+    last_checkpoint_epoch = None
+    val_name = resolve_eval_dataset_name(cfg)
     for epoch in range(1, epochs + 1):
         start_time = time.time()
         total_loss_meter.reset()
@@ -193,7 +202,10 @@ def part_attention_vit_do_train_with_amp(cfg,
         log_path = os.path.join(cfg.LOG_ROOT, cfg.LOG_NAME)
         
         if epoch % eval_period == 0:
-            if cfg.MODEL.DIST_TRAIN:
+            if should_skip_eval_if_dummy_ids(cfg, val_loader, num_query, val_name):
+                if not cfg.MODEL.DIST_TRAIN or dist.get_rank() == 0:
+                    logger.warning(dummy_eval_warning(val_name))
+            elif cfg.MODEL.DIST_TRAIN:
                 if dist.get_rank() == 0:
                     model.eval()
                     for n_iter, (img, vid, camid, camids, target_view, _) in enumerate(val_loader):
@@ -208,17 +220,25 @@ def part_attention_vit_do_train_with_amp(cfg,
                     logger.info("mAP: {:.1%}".format(mAP))
                     for r in [1, 5, 10]:
                         logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
+                    if best_index is None or best_mAP < mAP:
+                        best_mAP = mAP
+                        best_index = epoch
+                        torch.save(model.state_dict(), best_checkpoint_path)
+                        logger.info("=====best epoch: {} mAP: {:.1%}; saved {}=====".format(best_index, best_mAP, best_checkpoint_path))
                     torch.cuda.empty_cache()
             else:
-                cmc, mAP = do_inference(cfg, model, val_loader, num_query)
-                tbWriter.add_scalar('val/Rank@1', cmc[0], epoch)
-                tbWriter.add_scalar('val/mAP', mAP, epoch)
+                cmc, mAP = do_inference(cfg, model, val_loader, num_query, dataset_name=val_name)
+                if cmc is not None and mAP is not None:
+                    tbWriter.add_scalar('val/Rank@1', cmc[0], epoch)
+                    tbWriter.add_scalar('val/mAP', mAP, epoch)
+                    if best_index is None or best_mAP < mAP:
+                        best_mAP = mAP
+                        best_index = epoch
+                        torch.save(model.state_dict(), best_checkpoint_path)
+                        logger.info("=====best epoch: {} mAP: {:.1%}; saved {}=====".format(best_index, best_mAP, best_checkpoint_path))
 
         if epoch % checkpoint_period == 0:
-            if best_mAP < mAP:
-                best_mAP = mAP
-                best_index = epoch
-                logger.info("=====best epoch: {}=====".format(best_index))
+            last_checkpoint_epoch = epoch
             if cfg.MODEL.DIST_TRAIN:
                 if dist.get_rank() == 0:
                     torch.save(model.state_dict(),
@@ -229,38 +249,56 @@ def part_attention_vit_do_train_with_amp(cfg,
         torch.cuda.empty_cache()
 
     # final evaluation
-    load_path = os.path.join(log_path, cfg.MODEL.NAME + '_{}.pth'.format(best_index))
-    eval_model = make_model(cfg, modelname=cfg.MODEL.NAME, num_class=0, camera_num=None, view_num=None, num_semantic_class=model_num_semantic_classes(model))
-    eval_model.load_param(load_path)
-    print('load weights from {}_{}.pth'.format(cfg.MODEL.NAME, best_index))
-    for testname in cfg.DATASETS.TEST:
-        if 'ALL' in testname:
-            testname = 'DG_' + testname.split('_')[1]
-        val_loader, num_query = build_reid_test_loader(cfg, testname)
-        do_inference(cfg, eval_model, val_loader, num_query)
+    eval_model = None
+    if best_index is not None:
+        load_path = best_checkpoint_path
+        if os.path.exists(load_path):
+            eval_model = make_model(cfg, modelname=cfg.MODEL.NAME, num_class=0, camera_num=None, view_num=None, num_semantic_class=model_num_semantic_classes(model))
+            eval_model.load_param(load_path)
+            print('load best weights from {} (epoch {}, mAP {:.1%})'.format(load_path, best_index, best_mAP))
+        else:
+            logger.warning("Best checkpoint was not found: {}".format(load_path))
+    elif last_checkpoint_epoch is not None:
+        load_path = os.path.join(log_path, cfg.MODEL.NAME + '_{}.pth'.format(last_checkpoint_epoch))
+        if os.path.exists(load_path):
+            eval_model = make_model(cfg, modelname=cfg.MODEL.NAME, num_class=0, camera_num=None, view_num=None, num_semantic_class=model_num_semantic_classes(model))
+            eval_model.load_param(load_path)
+            logger.warning("No valid validation metric was recorded; using latest checkpoint for final evaluation: {}".format(load_path))
+        else:
+            logger.warning("Skipping final evaluation because checkpoint was not found: {}".format(load_path))
+    else:
+        logger.warning("Skipping final evaluation because no checkpoint was saved.")
+
+    if eval_model is not None:
+        for testname in cfg.DATASETS.TEST:
+            if 'ALL' in testname:
+                testname = 'DG_' + testname.split('_')[1]
+            val_loader, num_query = build_reid_test_loader(cfg, testname)
+            do_inference(cfg, eval_model, val_loader, num_query, dataset_name=testname)
     
-    # remove useless path files
-    del_list = os.listdir(log_path)
-    for fname in del_list:
-        if '.pth' in fname:
-            os.remove(os.path.join(log_path, fname))
-            print('removing {}. '.format(os.path.join(log_path, fname)))
-    # save final checkpoint
-    print('saving final checkpoint.\nDo not interrupt the program!!!')
-    torch.save(eval_model.state_dict(), os.path.join(log_path, cfg.MODEL.NAME + '_{}.pth'.format(epoch)))
-    print('done!')
+    if cfg.SOLVER.DELETE_OLD_CHECKPOINTS and eval_model is not None:
+        # remove useless path files
+        del_list = os.listdir(log_path)
+        for fname in del_list:
+            checkpoint_path = os.path.join(log_path, fname)
+            if '.pth' in fname and checkpoint_path != best_checkpoint_path:
+                os.remove(checkpoint_path)
+                print('removing {}. '.format(checkpoint_path))
+        # save final checkpoint
+        print('saving final checkpoint.\nDo not interrupt the program!!!')
+        torch.save(eval_model.state_dict(), os.path.join(log_path, cfg.MODEL.NAME + '_{}.pth'.format(epoch)))
+        print('done!')
+    else:
+        logger.info("Keeping all checkpoint files in {}".format(log_path))
 
 def do_inference(cfg,
                  model,
                  val_loader,
-                 num_query):
+                 num_query,
+                 dataset_name=None):
     device = "cuda"
     logger = logging.getLogger("PAT.test")
     logger.info("Enter inferencing")
-
-    evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM, class_penalty=get_class_distance_penalty(cfg))
-
-    evaluator.reset()
 
     if device:
         if torch.cuda.device_count() > 1:
@@ -269,6 +307,13 @@ def do_inference(cfg,
         model.to(device)
 
     model.eval()
+    if should_skip_eval_if_dummy_ids(cfg, val_loader, num_query, dataset_name):
+        logger.warning(dummy_eval_warning(resolve_eval_dataset_name(cfg, dataset_name)))
+        return None, None
+
+    evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM, class_penalty=get_class_distance_penalty(cfg))
+
+    evaluator.reset()
     use_class_aware = model_is_class_aware(model)
     use_metadata_classes = use_metadata_classes_for_retrieval(cfg)
     img_path_list = []

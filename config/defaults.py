@@ -213,6 +213,9 @@ _C.SOLVER.COSINE_SCALE = 30
 
 # epoch number of saving checkpoints
 _C.SOLVER.CHECKPOINT_PERIOD = 10
+# Keep all periodic checkpoints by default. Set True to restore the old
+# cleanup behavior that keeps only the final rewritten checkpoint.
+_C.SOLVER.DELETE_OLD_CHECKPOINTS = False
 # iteration of display training log
 _C.SOLVER.LOG_PERIOD = 100
 # epoch number of validation
@@ -242,6 +245,9 @@ _C.TEST.FEAT_NORM = True
 _C.TEST.DIST_MAT = "dist_mat.npy"
 # Whether calculate the eval score option: 'True', 'False'
 _C.TEST.EVAL = False
+# Challenge test IDs are unavailable/dummy, so validation metrics are skipped
+# by default for that split instead of logging misleading 100% mAP.
+_C.TEST.SKIP_EVAL_IF_DUMMY_IDS = True
 
 # ---------------------------------------------------------------------------- #
 # Misc options
