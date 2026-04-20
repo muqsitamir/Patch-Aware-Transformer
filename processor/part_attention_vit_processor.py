@@ -258,7 +258,15 @@ def do_inference(cfg,
     logger = logging.getLogger("PAT.test")
     logger.info("Enter inferencing")
 
-    evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM, class_penalty=get_class_distance_penalty(cfg))
+    evaluator = R1_mAP_eval(
+        num_query,
+        max_rank=50,
+        feat_norm=cfg.TEST.FEAT_NORM,
+        class_penalty=get_class_distance_penalty(cfg),
+        query_expansion=cfg.TEST.QUERY_EXPANSION,
+        qe_topk=cfg.TEST.QE_TOPK,
+        qe_alpha=cfg.TEST.QE_ALPHA,
+    )
 
     evaluator.reset()
 

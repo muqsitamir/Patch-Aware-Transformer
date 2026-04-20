@@ -13,13 +13,19 @@ from processor.ori_vit_processor_with_amp import do_inference as do_inf
 from processor.part_attention_vit_processor import do_inference as do_inf_pat
 from utils.class_aware import (
     class_distance_penalty_matrix,
+    get_class_csv_name,
     get_class_distance_penalty,
     get_batch_class_targets,
     infer_num_semantic_classes,
     model_is_class_aware,
+    read_class_csv,
     split_inference_output,
     use_metadata_classes_for_retrieval,
 )
+from utils.inference_postprocess import apply_query_expansion, build_class_postprocess_indices
+
+
+SUBMISSION_TOPK = 100
 
 #from torch.backends import cudnn
 
@@ -27,7 +33,7 @@ def extract_feature(model, dataloaders, num_query, cfg):
     features = []
     pred_classes = []
     count = 0
-    img_path = []
+    img_paths = []
     use_class_aware = model_is_class_aware(model)
     use_metadata_classes = use_metadata_classes_for_retrieval(cfg)
     model.eval()
@@ -62,6 +68,7 @@ def extract_feature(model, dataloaders, num_query, cfg):
                 pred_classes.append(class_targets.cpu())
         elif use_class_aware and class_logits_sum is not None:
             pred_classes.append(class_logits_sum.argmax(1).cpu())
+        img_paths.extend(data.get('img_path', []))
     features = torch.cat(features, 0)
     if pred_classes:
         pred_classes = torch.cat(pred_classes, 0).numpy()
@@ -74,7 +81,77 @@ def extract_feature(model, dataloaders, num_query, cfg):
     gf = features[num_query:]
     q_pred_classes = pred_classes[:num_query] if pred_classes is not None else None
     g_pred_classes = pred_classes[num_query:] if pred_classes is not None else None
-    return qf, gf, q_pred_classes, g_pred_classes
+    q_img_paths = img_paths[:num_query]
+    g_img_paths = img_paths[num_query:]
+    return qf, gf, q_pred_classes, g_pred_classes, q_img_paths, g_img_paths
+
+
+def dataset_root(cfg):
+    dataset_mode = str(getattr(cfg.DATASETS, "MODE", "challenge_only")).lower()
+    if dataset_mode == "external_only":
+        root = getattr(cfg.DATASETS, "EXTERNAL_ROOT", "")
+    else:
+        root = getattr(cfg.DATASETS, "ROOT_DIR", "")
+    if isinstance(root, (tuple, list)):
+        root = root[0]
+    return str(root)
+
+
+def classes_for_paths(image_to_class, image_paths):
+    if not image_to_class:
+        return None
+
+    classes = []
+    found = 0
+    for image_path in image_paths:
+        image_name = os.path.basename(image_path)
+        class_name = image_to_class.get(image_path) or image_to_class.get(image_name)
+        if class_name is None:
+            classes.append("")
+        else:
+            classes.append(class_name)
+            found += 1
+
+    if found == 0:
+        return None
+    return np.asarray(classes, dtype=object)
+
+
+def load_csv_submission_classes(cfg, q_img_paths, g_img_paths):
+    root = dataset_root(cfg)
+    query_csv = get_class_csv_name(cfg, "QUERY_CSV", "query_classes.csv")
+    test_csv = get_class_csv_name(cfg, "TEST_CSV", "test_classes.csv")
+    query_classes = classes_for_paths(read_class_csv(os.path.join(root, query_csv)), q_img_paths)
+    gallery_classes = classes_for_paths(read_class_csv(os.path.join(root, test_csv)), g_img_paths)
+    if query_classes is None or gallery_classes is None:
+        return None, None
+    return query_classes, gallery_classes
+
+
+def select_submission_classes(q_csv_classes, g_csv_classes, q_pred_classes, g_pred_classes):
+    if q_csv_classes is not None and g_csv_classes is not None:
+        return q_csv_classes, g_csv_classes, "csv"
+    if q_pred_classes is not None and g_pred_classes is not None:
+        return q_pred_classes, g_pred_classes, "model"
+    return None, None, "none"
+
+
+def class_mismatch_penalty(cfg):
+    test_penalty = float(getattr(cfg.TEST, "CLASS_MISMATCH_PENALTY", 0.0))
+    if test_penalty > 0:
+        return test_penalty
+    return get_class_distance_penalty(cfg)
+
+
+def save_feature_files(cfg, qf, gf):
+    if not bool(getattr(cfg.TEST, "SAVE_FEATURES", True)):
+        return
+
+    for path, features in ((cfg.TEST.FEAT_Q_PATH, qf), (cfg.TEST.FEAT_G_PATH, gf)):
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        np.save(path, features)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ReID Training")
@@ -119,26 +196,54 @@ if __name__ == "__main__":
         else:
             do_inf(cfg, model, val_loader, num_query)
     with torch.no_grad():
-        qf, gf, q_pred_classes, g_pred_classes = extract_feature(model, val_loader, num_query, cfg)
+        qf, gf, q_pred_classes, g_pred_classes, q_img_paths, g_img_paths = extract_feature(model, val_loader, num_query, cfg)
 
-    # save feature
-    qf=qf.cpu().numpy()
-    gf=gf.cpu().numpy()
-    np.save("./qf.npy", qf)
-    np.save("./gf.npy", gf)
+    q_csv_classes, g_csv_classes = load_csv_submission_classes(cfg, q_img_paths, g_img_paths)
+    q_classes, g_classes, class_source = select_submission_classes(
+        q_csv_classes,
+        g_csv_classes,
+        q_pred_classes,
+        g_pred_classes,
+    )
+    logger.info("Submission class source: {}".format(class_source))
+
+    # Features are L2-normalized by extract_feature. If query expansion is
+    # enabled, qf is replaced by the normalized query-expanded representation
+    # before ranking and optional feature saving.
+    qf = qf.cpu().numpy()
+    gf = gf.cpu().numpy()
+    if cfg.TEST.QUERY_EXPANSION:
+        qf, gf = apply_query_expansion(qf, gf, cfg.TEST.QE_TOPK, cfg.TEST.QE_ALPHA)
+    save_feature_files(cfg, qf, gf)
 
     q_g_dist = np.dot(qf, np.transpose(gf))
     q_q_dist = np.dot(qf, np.transpose(qf))
     g_g_dist = np.dot(gf, np.transpose(gf))
 
-    penalty_matrix = class_distance_penalty_matrix(
-        q_pred_classes,
-        g_pred_classes,
-        get_class_distance_penalty(cfg),
-    )
+    class_postprocess = str(cfg.TEST.CLASS_POSTPROCESS).lower()
+    class_score_mode = str(cfg.TEST.CLASS_SCORE_MODE).lower()
+    mismatch_penalty = class_mismatch_penalty(cfg)
+    penalty_matrix = None
+    postprocess_mode = class_postprocess
+    if class_postprocess == "penalty_additive" and class_score_mode == "additive":
+        penalty_matrix = class_distance_penalty_matrix(q_classes, g_classes, mismatch_penalty)
+        # The legacy additive mode biases the k-reciprocal re-ranking distance
+        # directly. After that, argsort preserves the final re-ranked order.
+        postprocess_mode = "off"
+
     re_rank_dist = re_ranking(q_g_dist, q_q_dist, g_g_dist, q_g_penalty=penalty_matrix)
 
-    indices = np.argsort(re_rank_dist, axis=1)[:, :100]
+    indices = build_class_postprocess_indices(
+        re_rank_dist,
+        q_classes,
+        g_classes,
+        mode=postprocess_mode,
+        output_topk=SUBMISSION_TOPK,
+        class_topk=cfg.TEST.CLASS_TOPK,
+        mismatch_penalty=mismatch_penalty,
+        score_mode=class_score_mode,
+        scale=cfg.TEST.CLASS_SCALE,
+    )
 
     m, n = indices.shape
     # # print('m: {}  n: {}'.format(m, n))

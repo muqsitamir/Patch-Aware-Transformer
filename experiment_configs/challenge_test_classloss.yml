@@ -64,6 +64,17 @@ TEST:
   WEIGHT: "./models/model/part_attention_vit_60.pth" #test 
   NECK_FEAT: 'before'
   FEAT_NORM: True
+  CLASS_POSTPROCESS: "penalty_additive"
+  CLASS_TOPK: 100
+  CLASS_MISMATCH_PENALTY: 0.3
+  CLASS_SCORE_MODE: "additive"
+  CLASS_SCALE: 1.2
+  QUERY_EXPANSION: False
+  QE_TOPK: 5
+  QE_ALPHA: 1.0
+  SAVE_FEATURES: True
+  FEAT_Q_PATH: "./qf.npy"
+  FEAT_G_PATH: "./gf.npy"
 
 LOG_ROOT: 'models/' # root of log file
 TB_LOG_ROOT: './tb_log/'
