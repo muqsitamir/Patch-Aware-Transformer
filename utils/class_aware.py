@@ -17,9 +17,25 @@ def get_class_aware_cfg(cfg):
     return getattr(model_cfg, "CLASS_AWARE", None)
 
 
+def get_class_token_select_cfg(cfg):
+    model_cfg = getattr(cfg, "MODEL", None)
+    if model_cfg is None:
+        return None
+    return getattr(model_cfg, "CLASS_TOKEN_SELECT", None)
+
+
 def is_class_aware_enabled(cfg):
     class_cfg = get_class_aware_cfg(cfg)
     return bool(getattr(class_cfg, "ENABLED", False)) if class_cfg is not None else False
+
+
+def is_class_token_select_enabled(cfg):
+    select_cfg = get_class_token_select_cfg(cfg)
+    return bool(getattr(select_cfg, "ENABLED", False)) if select_cfg is not None else False
+
+
+def uses_semantic_class_metadata(cfg):
+    return is_class_aware_enabled(cfg) or is_class_token_select_enabled(cfg)
 
 
 def get_class_loss_weight(cfg):
@@ -82,11 +98,17 @@ def build_class_to_idx(dataset_root, train_class_csv="train_classes.csv"):
 
 
 def infer_num_semantic_classes(cfg):
-    if not is_class_aware_enabled(cfg):
+    if not uses_semantic_class_metadata(cfg):
         return 0
 
     class_cfg = get_class_aware_cfg(cfg)
-    configured_num = int(getattr(class_cfg, "NUM_CLASSES", 0)) if class_cfg is not None else 0
+    select_cfg = get_class_token_select_cfg(cfg)
+    configured_nums = []
+    if class_cfg is not None:
+        configured_nums.append(int(getattr(class_cfg, "NUM_CLASSES", 0)))
+    if select_cfg is not None and bool(getattr(select_cfg, "ENABLED", False)):
+        configured_nums.append(int(getattr(select_cfg, "NUM_CLASSES", 0)))
+    configured_num = max(configured_nums) if configured_nums else 0
     if configured_num > 0:
         return configured_num
 

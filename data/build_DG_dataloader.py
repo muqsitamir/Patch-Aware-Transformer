@@ -14,7 +14,7 @@ from . import samplers
 from .common import CommDataset
 from .datasets import DATASET_REGISTRY
 from .transforms import build_transforms
-from utils.class_aware import is_class_aware_enabled
+from utils.class_aware import uses_semantic_class_metadata
 
 _root = os.getenv("REID_DATASETS", "../../data")
 
@@ -54,7 +54,7 @@ def build_reid_train_loader(cfg):
     _root = _dataset_root(cfg)
     for d in cfg.DATASETS.TRAIN:
         dataset_kwargs = {"root": _root, "combineall": cfg.DATASETS.COMBINEALL}
-        if is_class_aware_enabled(cfg) and _uses_urban_class_csv(d):
+        if uses_semantic_class_metadata(cfg) and _uses_urban_class_csv(d):
             dataset_kwargs["class_aware"] = True
             dataset_kwargs["class_aware_cfg"] = cfg.MODEL.CLASS_AWARE
         if d == 'CUHK03_NP':
@@ -100,7 +100,7 @@ def build_reid_test_loader(cfg, dataset_name, opt=None, flag_test=True, shuffle=
     test_transforms = build_transforms(cfg, is_train=False)
     _root = _dataset_root(cfg)
     dataset_kwargs = {"root": _root}
-    if is_class_aware_enabled(cfg) and _uses_urban_class_csv(dataset_name):
+    if uses_semantic_class_metadata(cfg) and _uses_urban_class_csv(dataset_name):
         dataset_kwargs["class_aware"] = True
         dataset_kwargs["class_aware_cfg"] = cfg.MODEL.CLASS_AWARE
     if opt is None:

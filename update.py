@@ -51,14 +51,15 @@ def extract_feature(model, dataloaders, num_query, cfg):
         class_logits_sum = None
         for i in range(2):
             input_img = img.cuda()
+            class_targets = get_batch_class_targets(data, input_img.device)
             if use_class_aware and not use_metadata_classes:
-                outputs = model(input_img, return_class_logits=True)
+                outputs = model(input_img, return_class_logits=True, class_labels=class_targets)
                 f, class_logits = split_inference_output(outputs)
                 if class_logits is not None:
                     class_logits = class_logits.float()
                     class_logits_sum = class_logits if class_logits_sum is None else class_logits_sum + class_logits
             else:
-                f = model(input_img)
+                f = model(input_img, class_labels=class_targets)
             f = f.float()
             if ff is None:
                 ff = torch.zeros_like(f).cuda()
@@ -67,9 +68,9 @@ def extract_feature(model, dataloaders, num_query, cfg):
         ff = ff.div(fnorm.expand_as(ff))
         features.append(ff)
         if use_metadata_classes:
-            class_targets = get_batch_class_targets(data)
-            if class_targets is not None:
-                pred_classes.append(class_targets.cpu())
+            class_targets_cpu = get_batch_class_targets(data)
+            if class_targets_cpu is not None:
+                pred_classes.append(class_targets_cpu.cpu())
         elif use_class_aware and class_logits_sum is not None:
             pred_classes.append(class_logits_sum.argmax(1).cpu())
         img_paths.extend(data.get('img_path', []))

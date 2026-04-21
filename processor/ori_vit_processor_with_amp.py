@@ -103,9 +103,9 @@ def ori_vit_do_train_with_amp(cfg,
                     loss = loss_fn(score, feat, target, domains, t_domains)
                 else:
                     if use_class_aware:
-                        score, feat, class_logits = model(img, return_class_logits=True)
+                        score, feat, class_logits = model(img, return_class_logits=True, class_labels=class_targets)
                     else:
-                        score, feat = model(img)
+                        score, feat = model(img, class_labels=class_targets)
                     reid_loss = loss_fn(score, feat, target)
                     class_loss = semantic_classification_loss(class_logits, class_targets)
                     if class_loss is not None:
@@ -168,7 +168,7 @@ def ori_vit_do_train_with_amp(cfg,
                             img = img.to(device)
                             camids = camids.to(device)
                             target_view = target_view.to(device)
-                            feat = model(img)
+                            feat = model(img, class_labels=None)
                             evaluator.update((feat, vid, camid))
                     cmc, mAP, _, _, _, _, _ = evaluator.compute()
                     logger.info("Validation Results - Epoch: {}".format(epoch))
@@ -289,17 +289,18 @@ def do_inference(cfg,
         with torch.no_grad():
             img = img.to(device)
             # camids = camids.to(device)
+            class_targets = get_batch_class_targets(informations, device)
             if use_metadata_classes:
-                feat = model(img)
-                pred_classes = get_batch_class_targets(informations)
+                feat = model(img, class_labels=class_targets)
+                pred_classes = class_targets.cpu() if class_targets is not None else None
                 evaluator.update((feat, pid, camids, pred_classes))
             elif use_class_aware:
-                output = model(img, return_class_logits=True)
+                output = model(img, return_class_logits=True, class_labels=class_targets)
                 feat, class_logits = split_inference_output(output)
                 pred_classes = class_logits.argmax(1).cpu() if class_logits is not None else None
                 evaluator.update((feat, pid, camids, pred_classes))
             else:
-                feat = model(img)
+                feat = model(img, class_labels=class_targets)
                 evaluator.update((feat, pid, camids))
             img_path_list.extend(imgpath)
 

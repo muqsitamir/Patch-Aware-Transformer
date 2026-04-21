@@ -5,7 +5,8 @@ import random
 from model.backbones.vit_pytorch import deit_tiny_patch16_224_TransReID, part_attention_deit_small, part_attention_deit_tiny, part_attention_vit_base, part_attention_vit_base_p32, part_attention_vit_large, part_attention_vit_small, vit_base_patch32_224_TransReID, vit_large_patch16_224_TransReID
 import torch
 import torch.nn as nn
-from utils.class_aware import is_class_aware_enabled
+import torch.nn.functional as F
+from utils.class_aware import is_class_aware_enabled, is_class_token_select_enabled
 
 from .backbones.resnet import BasicBlock, ResNet, Bottleneck
 from .backbones import vit_base_patch16_224_TransReID, vit_small_patch16_224_TransReID, deit_small_patch16_224_TransReID
@@ -48,6 +49,227 @@ def weights_init_classifier(m):
         nn.init.normal_(m.weight, std=0.001)
         if m.bias:
             nn.init.constant_(m.bias, 0.0)
+
+
+class ClassGuidedTokenSelector(nn.Module):
+    def __init__(
+        self,
+        in_planes,
+        num_classes,
+        topk=16,
+        fusion='add',
+        beta=0.5,
+        score_norm='softmax',
+        mode='relevance',
+        deviation_metric='cosine',
+        relevance_weight=1.0,
+        deviation_weight=1.0,
+    ):
+        super().__init__()
+        self.in_planes = int(in_planes)
+        self.num_classes = int(num_classes)
+        self.topk = int(topk)
+        self.fusion = str(fusion).lower()
+        self.beta = float(beta)
+        self.score_norm = str(score_norm).lower()
+        self.mode = str(mode).lower()
+        self.deviation_metric = str(deviation_metric).lower()
+        self.relevance_weight = float(relevance_weight)
+        self.deviation_weight = float(deviation_weight)
+        self._debug_logged = False
+        self._fallback_logged = False
+        self._invalid_logged = False
+
+        if self.num_classes <= 0:
+            raise ValueError("ClassGuidedTokenSelector requires num_classes > 0")
+        if self.fusion not in ('add', 'concat'):
+            raise ValueError("MODEL.CLASS_TOKEN_SELECT.FUSION must be 'add' or 'concat'")
+        if self.score_norm not in ('softmax', 'sigmoid', 'none'):
+            raise ValueError("MODEL.CLASS_TOKEN_SELECT.SCORE_NORM must be 'softmax', 'sigmoid', or 'none'")
+        if self.mode not in ('relevance', 'deviation', 'relevance_x_deviation'):
+            raise ValueError("MODEL.CLASS_TOKEN_SELECT.MODE must be 'relevance', 'deviation', or 'relevance_x_deviation'")
+        if self.deviation_metric not in ('cosine', 'l2'):
+            raise ValueError("MODEL.CLASS_TOKEN_SELECT.DEVIATION_METRIC must be 'cosine' or 'l2'")
+
+        self.class_embed = nn.Embedding(self.num_classes, self.in_planes)
+        self.class_prototype = nn.Embedding(self.num_classes, self.in_planes)
+        nn.init.normal_(self.class_embed.weight, std=0.02)
+        nn.init.normal_(self.class_prototype.weight, std=0.02)
+        if self.fusion == 'concat':
+            self.fusion_proj = nn.Linear(self.in_planes * 2, self.in_planes)
+            self.fusion_proj.apply(weights_init_kaiming)
+        else:
+            self.fusion_proj = None
+
+    def _log_once(self, attr_name, message):
+        if getattr(self, attr_name):
+            return
+        setattr(self, attr_name, True)
+        logging.getLogger("PAT.train").info(message)
+        print(message)
+
+    def forward(self, global_token, patch_tokens, class_labels=None):
+        if class_labels is None:
+            self._log_once(
+                '_fallback_logged',
+                'Class-token selection fallback: class labels are missing; using global tokens.'
+            )
+            return global_token
+        if patch_tokens is None or patch_tokens.dim() != 3 or patch_tokens.size(1) == 0:
+            self._log_once(
+                '_fallback_logged',
+                'Class-token selection fallback: patch tokens are unavailable; using global tokens.'
+            )
+            return global_token
+        if global_token.dim() != 2 or patch_tokens.size(0) != global_token.size(0) or patch_tokens.size(2) != global_token.size(1):
+            self._log_once(
+                '_fallback_logged',
+                'Class-token selection fallback: token shapes do not match; using global tokens.'
+            )
+            return global_token
+
+        if not torch.is_tensor(class_labels):
+            class_labels = torch.tensor(class_labels, device=global_token.device)
+        class_labels = class_labels.to(global_token.device).long().view(-1)
+        if class_labels.numel() != global_token.size(0):
+            self._log_once(
+                '_fallback_logged',
+                'Class-token selection fallback: class-label batch size does not match tokens; using global tokens.'
+            )
+            return global_token
+
+        valid = (class_labels >= 0) & (class_labels < self.num_classes)
+        if not torch.any(valid):
+            self._log_once(
+                '_invalid_logged',
+                'Class-token selection fallback: all class labels are invalid; using global tokens.'
+            )
+            return global_token
+
+        k = min(max(self.topk, 1), patch_tokens.size(1))
+        safe_labels = class_labels.clamp(0, self.num_classes - 1)
+        queries = self.class_embed(safe_labels).to(dtype=patch_tokens.dtype)
+        prototypes = self.class_prototype(safe_labels).to(dtype=patch_tokens.dtype)
+        query_norm = F.normalize(queries, dim=-1)
+        patch_norm = F.normalize(patch_tokens, dim=-1)
+        prototype_norm = F.normalize(prototypes, dim=-1)
+        relevance_scores = torch.einsum('bnc,bc->bn', patch_norm, query_norm)
+        prototype_similarity = torch.einsum('bnc,bc->bn', patch_norm, prototype_norm)
+        if self.deviation_metric == 'cosine':
+            deviation_scores = 1.0 - prototype_similarity
+        else:
+            deviation_scores = torch.sum((patch_tokens - prototypes.unsqueeze(1)).pow(2), dim=-1)
+
+        weighted_relevance = self.relevance_weight * relevance_scores
+        weighted_deviation = self.deviation_weight * deviation_scores
+        if self.mode == 'relevance':
+            scores = weighted_relevance
+        elif self.mode == 'deviation':
+            scores = weighted_deviation
+        else:
+            scores = weighted_relevance * weighted_deviation
+
+        top_scores, top_indices = torch.topk(scores, k=k, dim=1)
+        gather_index = top_indices.unsqueeze(-1).expand(-1, -1, patch_tokens.size(-1))
+        selected_tokens = torch.gather(patch_tokens, 1, gather_index)
+
+        if self.score_norm == 'softmax':
+            weights = F.softmax(top_scores, dim=1).unsqueeze(-1).to(dtype=selected_tokens.dtype)
+            selected_local = torch.sum(selected_tokens * weights, dim=1)
+        elif self.score_norm == 'sigmoid':
+            weights = torch.sigmoid(top_scores).unsqueeze(-1).to(dtype=selected_tokens.dtype)
+            selected_local = torch.sum(selected_tokens * weights, dim=1)
+            selected_local = selected_local / weights.sum(dim=1).clamp_min(1e-6)
+        else:
+            selected_local = selected_tokens.mean(dim=1)
+
+        selected_local = selected_local.to(dtype=global_token.dtype)
+        if self.fusion == 'add':
+            fused_valid = global_token + self.beta * selected_local
+        else:
+            fused_valid = self.fusion_proj(torch.cat([global_token, self.beta * selected_local], dim=1))
+        fused = torch.where(valid.unsqueeze(1), fused_valid, global_token)
+
+        if not self._debug_logged:
+            self._debug_logged = True
+            message = (
+                'Class-token selection debug: mode={}, deviation_metric={}, global={}, patches={}, '
+                'relevance_scores={}, deviation_scores={}, final_scores={}, selected={}, topk={}, valid={}/{}'
+            ).format(
+                self.mode,
+                self.deviation_metric,
+                tuple(global_token.shape),
+                tuple(patch_tokens.shape),
+                tuple(relevance_scores.shape),
+                tuple(deviation_scores.shape),
+                tuple(scores.shape),
+                tuple(selected_tokens.shape),
+                k,
+                int(valid.sum().item()),
+                int(valid.numel()),
+            )
+            logging.getLogger("PAT.train").info(message)
+            print(message)
+        valid_relevance = relevance_scores[valid]
+        valid_deviation = deviation_scores[valid]
+        valid_scores = scores[valid]
+        logging.getLogger("PAT.train").debug(
+            "Class-token selection batch stats: mode=%s, deviation_metric=%s, topk=%d, "
+            "mean_relevance=%.4f, mean_deviation=%.4f, mean_fused_score=%.4f",
+            self.mode,
+            self.deviation_metric,
+            k,
+            valid_relevance.detach().float().mean().item(),
+            valid_deviation.detach().float().mean().item(),
+            valid_scores.detach().float().mean().item(),
+        )
+        return fused
+
+
+def _make_class_token_selector(cfg, in_planes, num_semantic_classes, owner_name, supports_tokens=True):
+    requested = is_class_token_select_enabled(cfg)
+    if not requested:
+        print('Class-token selection disabled for {}.'.format(owner_name))
+        return None, False
+    if not supports_tokens:
+        print('Class-token selection requested for {}, but this backbone does not expose patch tokens; disabled.'.format(owner_name))
+        return None, False
+
+    select_cfg = cfg.MODEL.CLASS_TOKEN_SELECT
+    configured_classes = int(getattr(select_cfg, 'NUM_CLASSES', 0))
+    num_classes = max(int(num_semantic_classes), configured_classes)
+    if num_classes <= 0:
+        print('Class-token selection requested for {}, but NUM_CLASSES is 0; disabled.'.format(owner_name))
+        return None, False
+
+    selector = ClassGuidedTokenSelector(
+        in_planes=in_planes,
+        num_classes=num_classes,
+        topk=int(getattr(select_cfg, 'TOPK', 16)),
+        fusion=str(getattr(select_cfg, 'FUSION', 'add')),
+        beta=float(getattr(select_cfg, 'BETA', 0.5)),
+        score_norm=str(getattr(select_cfg, 'SCORE_NORM', 'softmax')),
+        mode=str(getattr(select_cfg, 'MODE', 'relevance')),
+        deviation_metric=str(getattr(select_cfg, 'DEVIATION_METRIC', 'cosine')),
+        relevance_weight=float(getattr(select_cfg, 'RELEVANCE_WEIGHT', 1.0)),
+        deviation_weight=float(getattr(select_cfg, 'DEVIATION_WEIGHT', 1.0)),
+    )
+    print(
+        'Class-token selection enabled for {}: num_classes={}, topk={}, fusion={}, beta={}, '
+        'score_norm={}, mode={}, deviation_metric={}, relevance_weight={}, deviation_weight={}'.format(
+            owner_name,
+            num_classes,
+            selector.topk,
+            selector.fusion,
+            selector.beta,
+            selector.score_norm,
+            selector.mode,
+            selector.deviation_metric,
+            selector.relevance_weight,
+            selector.deviation_weight,
+        )
+    )
+    return selector, True
 
 
 def _load_finetune_params(model, model_path):
@@ -144,6 +366,9 @@ class Backbone(nn.Module):
         self.num_classes = num_classes
         self.num_semantic_classes = int(num_semantic_classes)
         self.class_aware_enabled = is_class_aware_enabled(cfg) and self.num_semantic_classes > 0
+        self.class_token_selector, self.class_token_select_enabled = _make_class_token_selector(
+            cfg, self.in_planes, self.num_semantic_classes, model_name, supports_tokens=False
+        )
 
         self.classifier = nn.Linear(self.in_planes, self.num_classes, bias=False)
         self.classifier.apply(weights_init_classifier)
@@ -155,7 +380,7 @@ class Backbone(nn.Module):
         self.bottleneck.bias.requires_grad_(False)
         self.bottleneck.apply(weights_init_kaiming)
 
-    def forward(self, x, label=None, return_class_logits=False):  # label is unused if self.cos_layer == 'no'
+    def forward(self, x, label=None, return_class_logits=False, class_labels=None):  # label is unused if self.cos_layer == 'no'
         x = self.base(x) # B, C, h, w
         
         global_feat = nn.functional.avg_pool2d(x, x.shape[2:4])
@@ -245,6 +470,9 @@ class build_vit(nn.Module):
             self.in_planes = 192
         elif cfg.MODEL.TRANSFORMER_TYPE == 'vit_large_patch16_224_TransReID':
             self.in_planes = 1024
+        self.class_token_selector, self.class_token_select_enabled = _make_class_token_selector(
+            cfg, self.in_planes, self.num_semantic_classes, 'vit'
+        )
         if self.pretrain_choice == 'imagenet':
             self.base.load_param(self.model_path)
             print('Loading pretrained ImageNet model......from {}'.format(self.model_path))
@@ -258,9 +486,12 @@ class build_vit(nn.Module):
         self.bottleneck.bias.requires_grad_(False)
         self.bottleneck.apply(weights_init_kaiming)
 
-    def forward(self, x, return_class_logits=False):
+    def forward(self, x, return_class_logits=False, class_labels=None):
         x = self.base(x) # B, N, C
         global_feat = x[:, 0] # cls token for global feature
+        if self.class_token_select_enabled:
+            patch_tokens = x[:, 1:]
+            global_feat = self.class_token_selector(global_feat, patch_tokens, class_labels)
 
         feat = self.bottleneck(global_feat)
 
@@ -343,6 +574,9 @@ class build_part_attention_vit(nn.Module):
             self.in_planes = 192
         elif cfg.MODEL.TRANSFORMER_TYPE == 'vit_large_patch16_224_TransReID':
             self.in_planes = 1024
+        self.class_token_selector, self.class_token_select_enabled = _make_class_token_selector(
+            cfg, self.in_planes, self.num_semantic_classes, 'part_attention_vit'
+        )
         if self.pretrain_choice == 'imagenet':
             self.base.load_param(self.model_path)
             print('Loading pretrained ImageNet model......from {}'.format(self.model_path))
@@ -356,12 +590,15 @@ class build_part_attention_vit(nn.Module):
             self.semantic_head = nn.Linear(self.in_planes, self.num_semantic_classes, bias=False)
             self.semantic_head.apply(weights_init_classifier)
 
-    def forward(self, x, return_class_logits=False):
+    def forward(self, x, return_class_logits=False, class_labels=None):
         layerwise_tokens = self.base(x) # B, N, C
         layerwise_cls_tokens = [t[:, 0] for t in layerwise_tokens] # cls token
         part_feat_list = layerwise_tokens[-1][:, 1: 4] # 3, 768
 
         layerwise_part_tokens = [[t[:, i] for i in range(1,4)] for t in layerwise_tokens] # 12 3 768
+        if self.class_token_select_enabled:
+            patch_tokens = layerwise_tokens[-1][:, 4:]
+            layerwise_cls_tokens[-1] = self.class_token_selector(layerwise_cls_tokens[-1], patch_tokens, class_labels)
         feat = self.bottleneck(layerwise_cls_tokens[-1])
 
         if self.training:

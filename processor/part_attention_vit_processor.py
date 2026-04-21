@@ -83,10 +83,11 @@ def part_attention_vit_do_train_with_amp(cfg,
                 vid = informations['targets']
                 camid = informations['camid']
                 path = informations['img_path']
+                class_targets = get_batch_class_targets(informations, input.device)
                 #input = input.view(-1, input.size(2), input.size(3), input.size(4))
 
                 # compute output
-                _, _, layerwise_feat_list = model(input)
+                _, _, layerwise_feat_list = model(input, class_labels=class_targets)
                 patch_centers.get_soft_label(path, layerwise_feat_list[-1], vid=vid, camid=camid)
         print('initialization done')
     
@@ -126,9 +127,9 @@ def part_attention_vit_do_train_with_amp(cfg,
             model.to(device)
             with amp.autocast(enabled=True):
                 if use_class_aware:
-                    score, layerwise_global_feat, layerwise_feat_list, class_logits = model(img, return_class_logits=True)
+                    score, layerwise_global_feat, layerwise_feat_list, class_logits = model(img, return_class_logits=True, class_labels=class_targets)
                 else:
-                    score, layerwise_global_feat, layerwise_feat_list = model(img)
+                    score, layerwise_global_feat, layerwise_feat_list = model(img, class_labels=class_targets)
                 
                 ############## patch learning ######################
                 patch_agent, position = patch_centers.get_soft_label(img_path, layerwise_feat_list[-1], vid=vid, camid=camid)
@@ -213,7 +214,7 @@ def part_attention_vit_do_train_with_amp(cfg,
                             img = img.to(device)
                             camids = camids.to(device)
                             target_view = target_view.to(device)
-                            feat = model(img)
+                            feat = model(img, class_labels=None)
                             evaluator.update((feat, vid, camid))
                     cmc, mAP, _, _, _, _, _ = evaluator.compute()
                     logger.info("Validation Results - Epoch: {}".format(epoch))
@@ -334,17 +335,18 @@ def do_inference(cfg,
         with torch.no_grad():
             img = img.to(device)
             # camids = camids.to(device)
+            class_targets = get_batch_class_targets(informations, device)
             if use_metadata_classes:
-                feat = model(img)
-                pred_classes = get_batch_class_targets(informations)
+                feat = model(img, class_labels=class_targets)
+                pred_classes = class_targets.cpu() if class_targets is not None else None
                 evaluator.update((feat, pid, camids, pred_classes))
             elif use_class_aware:
-                output = model(img, return_class_logits=True)
+                output = model(img, return_class_logits=True, class_labels=class_targets)
                 feat, class_logits = split_inference_output(output)
                 pred_classes = class_logits.argmax(1).cpu() if class_logits is not None else None
                 evaluator.update((feat, pid, camids, pred_classes))
             else:
-                feat = model(img)
+                feat = model(img, class_labels=class_targets)
                 evaluator.update((feat, pid, camids))
             img_path_list.extend(imgpath)
 

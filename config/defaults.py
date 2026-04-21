@@ -87,6 +87,20 @@ _C.MODEL.CLASS_AWARE.QUERY_CSV = "query_classes.csv"
 _C.MODEL.CLASS_AWARE.TEST_CSV = "test_classes.csv"
 _C.MODEL.CLASS_AWARE.RETRIEVAL_SOURCE = "predicted"
 
+# Optional class-guided patch-token selection. This consumes semantic class
+# metadata when available but does not add an auxiliary class loss.
+_C.MODEL.CLASS_TOKEN_SELECT = CN()
+_C.MODEL.CLASS_TOKEN_SELECT.ENABLED = False
+_C.MODEL.CLASS_TOKEN_SELECT.NUM_CLASSES = 4
+_C.MODEL.CLASS_TOKEN_SELECT.TOPK = 16
+_C.MODEL.CLASS_TOKEN_SELECT.FUSION = "add"
+_C.MODEL.CLASS_TOKEN_SELECT.BETA = 0.5
+_C.MODEL.CLASS_TOKEN_SELECT.SCORE_NORM = "softmax"
+_C.MODEL.CLASS_TOKEN_SELECT.MODE = "relevance"
+_C.MODEL.CLASS_TOKEN_SELECT.DEVIATION_METRIC = "cosine"
+_C.MODEL.CLASS_TOKEN_SELECT.RELEVANCE_WEIGHT = 1.0
+_C.MODEL.CLASS_TOKEN_SELECT.DEVIATION_WEIGHT = 1.0
+
 #-----------------------------------------------------------------------------
 # INPUT
 # -----------------------------------------------------------------------------

@@ -13,7 +13,11 @@ import os
 import argparse
 from config import cfg
 import loss as Patchloss
-from utils.class_aware import infer_num_semantic_classes, is_class_aware_enabled
+from utils.class_aware import (
+    infer_num_semantic_classes,
+    is_class_token_select_enabled,
+    uses_semantic_class_metadata,
+)
 
 
 def _load_finetune_checkpoint_if_requested(cfg, model):
@@ -84,9 +88,11 @@ if __name__ == '__main__':
     val_loader, num_query = build_reid_test_loader(cfg, val_name)
     num_classes = len(train_loader.dataset.pids)
     num_semantic_classes = infer_num_semantic_classes(cfg)
-    if is_class_aware_enabled(cfg):
-        loader_semantic_classes = getattr(train_loader.dataset, 'num_semantic_classes', 0)
+    loader_semantic_classes = getattr(train_loader.dataset, 'num_semantic_classes', 0)
+    if uses_semantic_class_metadata(cfg):
         num_semantic_classes = max(num_semantic_classes, loader_semantic_classes)
+    if is_class_token_select_enabled(cfg) and loader_semantic_classes <= 0:
+        logger.warning("CLASS_TOKEN_SELECT is enabled but no semantic class labels were found in the train loader; the selector will fall back to global tokens.")
     model_name = cfg.MODEL.NAME
     model = make_model(cfg, modelname=model_name, num_class=num_classes, camera_num=None, view_num=None, num_semantic_class=num_semantic_classes)
     _load_finetune_checkpoint_if_requested(cfg, model)
