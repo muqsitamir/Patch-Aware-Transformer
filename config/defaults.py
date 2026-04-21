@@ -248,6 +248,23 @@ _C.TEST.EVAL = False
 # Challenge test IDs are unavailable/dummy, so validation metrics are skipped
 # by default for that split instead of logging misleading 100% mAP.
 _C.TEST.SKIP_EVAL_IF_DUMMY_IDS = True
+# Optional inference-only query expansion. The query feature is averaged with
+# its top-k gallery neighbors and normalized again before ranking.
+_C.TEST.QUERY_EXPANSION = False
+_C.TEST.QE_TOPK = 5
+_C.TEST.QE_ALPHA = 1.0
+# Optional semantic class post-processing during submission generation.
+# Modes: off, penalty_additive, same_class_first, same_class_only_topk,
+# hard_same_class_only.
+_C.TEST.CLASS_POSTPROCESS = "off"
+_C.TEST.CLASS_TOPK = 100
+_C.TEST.CLASS_MISMATCH_PENALTY = 0.0
+_C.TEST.CLASS_SCORE_MODE = "additive"
+_C.TEST.CLASS_SCALE = 1.2
+# Feature dumps for cheap late fusion / ensembling.
+_C.TEST.SAVE_FEATURES = True
+_C.TEST.FEAT_Q_PATH = "./qf.npy"
+_C.TEST.FEAT_G_PATH = "./gf.npy"
 
 # ---------------------------------------------------------------------------- #
 # Misc options

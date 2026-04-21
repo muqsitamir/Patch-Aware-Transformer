@@ -299,7 +299,6 @@ def do_inference(cfg,
     device = "cuda"
     logger = logging.getLogger("PAT.test")
     logger.info("Enter inferencing")
-
     if device:
         if torch.cuda.device_count() > 1:
             print('Using {} GPUs for inference'.format(torch.cuda.device_count()))
@@ -311,7 +310,15 @@ def do_inference(cfg,
         logger.warning(dummy_eval_warning(resolve_eval_dataset_name(cfg, dataset_name)))
         return None, None
 
-    evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM, class_penalty=get_class_distance_penalty(cfg))
+    evaluator = R1_mAP_eval(
+        num_query,
+        max_rank=50,
+        feat_norm=cfg.TEST.FEAT_NORM,
+        class_penalty=get_class_distance_penalty(cfg),
+        query_expansion=bool(getattr(cfg.TEST, "QUERY_EXPANSION", False)),
+        qe_topk=int(getattr(cfg.TEST, "QE_TOPK", 5)),
+        qe_alpha=float(getattr(cfg.TEST, "QE_ALPHA", 1.0)),
+    )
 
     evaluator.reset()
     use_class_aware = model_is_class_aware(model)

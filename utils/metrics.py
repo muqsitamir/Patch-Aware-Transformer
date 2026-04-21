@@ -5,6 +5,7 @@ import numpy as np
 import os
 from utils.reranking import re_ranking
 from utils.class_aware import apply_class_distance_penalty, class_distance_penalty_matrix
+from utils.inference_postprocess import apply_query_expansion
 
 
 def euclidean_distance(qf, gf):
@@ -91,13 +92,26 @@ def eval_func(distmat, q_pids, g_pids, q_camids, g_camids, max_rank=50):
 
 
 class R1_mAP_eval():
-    def __init__(self, num_query, max_rank=50, feat_norm=True, reranking=False, class_penalty=0.0):
+    def __init__(
+        self,
+        num_query,
+        max_rank=50,
+        feat_norm=True,
+        reranking=False,
+        class_penalty=0.0,
+        query_expansion=False,
+        qe_topk=5,
+        qe_alpha=1.0,
+    ):
         super(R1_mAP_eval, self).__init__()
         self.num_query = num_query
         self.max_rank = max_rank
         self.feat_norm = feat_norm
         self.reranking = reranking
         self.class_penalty = class_penalty
+        self.query_expansion = query_expansion
+        self.qe_topk = qe_topk
+        self.qe_alpha = qe_alpha
 
     def reset(self):
         self.feats = []
@@ -131,6 +145,9 @@ class R1_mAP_eval():
         g_pids = np.asarray(self.pids[self.num_query:])
 
         g_camids = np.asarray(self.camids[self.num_query:])
+        if self.query_expansion:
+            qf, gf = apply_query_expansion(qf, gf, self.qe_topk, self.qe_alpha)
+
         q_classes = None
         g_classes = None
         penalty_matrix = None
@@ -156,4 +173,3 @@ class R1_mAP_eval():
         cmc, mAP = eval_func(distmat, q_pids, g_pids, q_camids, g_camids)
 
         return cmc, mAP, distmat, self.pids, self.camids, qf, gf
-

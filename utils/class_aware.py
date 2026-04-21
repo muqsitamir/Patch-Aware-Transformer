@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 
 CLASS_ID_KEY = "class_id"
+INVALID_CLASS_NAMES = {"", "-1", "none", "null", "nan"}
 
 
 def get_class_aware_cfg(cfg):
@@ -175,22 +176,74 @@ def apply_class_distance_penalty(distmat, q_classes, g_classes, penalty):
     return np.asarray(distmat) + penalty_matrix
 
 
+def _class_array(classes):
+    if classes is None:
+        return None
+
+    if torch.is_tensor(classes):
+        classes = classes.cpu().numpy()
+
+    classes = np.asarray(classes).reshape(-1)
+    if classes.size == 0:
+        return None
+
+    if classes.dtype.kind in ("O", "U", "S"):
+        return np.asarray([normalize_class_name(cls) for cls in classes], dtype=object)
+
+    return classes
+
+
+def _valid_class_mask(classes):
+    classes = _class_array(classes)
+    if classes is None:
+        return None
+
+    if classes.dtype.kind in ("i", "u"):
+        return classes >= 0
+    if classes.dtype.kind == "f":
+        return np.isfinite(classes) & (classes >= 0)
+
+    return ~np.isin(classes, list(INVALID_CLASS_NAMES))
+
+
+def class_match_matrix(q_classes, g_classes):
+    q_classes = _class_array(q_classes)
+    g_classes = _class_array(g_classes)
+    if q_classes is None or g_classes is None:
+        return None
+
+    q_valid = _valid_class_mask(q_classes)
+    g_valid = _valid_class_mask(g_classes)
+    if q_valid is None or g_valid is None:
+        return None
+
+    valid = q_valid[:, np.newaxis] & g_valid[np.newaxis, :]
+    return valid & (q_classes[:, np.newaxis] == g_classes[np.newaxis, :])
+
+
+def class_mismatch_matrix(q_classes, g_classes):
+    q_classes = _class_array(q_classes)
+    g_classes = _class_array(g_classes)
+    if q_classes is None or g_classes is None:
+        return None
+
+    q_valid = _valid_class_mask(q_classes)
+    g_valid = _valid_class_mask(g_classes)
+    if q_valid is None or g_valid is None:
+        return None
+
+    valid = q_valid[:, np.newaxis] & g_valid[np.newaxis, :]
+    return valid & (q_classes[:, np.newaxis] != g_classes[np.newaxis, :])
+
+
 def class_distance_penalty_matrix(q_classes, g_classes, penalty):
     if penalty <= 0 or q_classes is None or g_classes is None:
         return None
 
-    if torch.is_tensor(q_classes):
-        q_classes = q_classes.cpu().numpy()
-    if torch.is_tensor(g_classes):
-        g_classes = g_classes.cpu().numpy()
-
-    q_classes = np.asarray(q_classes).reshape(-1)
-    g_classes = np.asarray(g_classes).reshape(-1)
-    if q_classes.size == 0 or g_classes.size == 0:
+    mismatch = class_mismatch_matrix(q_classes, g_classes)
+    if mismatch is None:
         return None
 
-    valid = (q_classes[:, np.newaxis] >= 0) & (g_classes[np.newaxis, :] >= 0)
-    mismatch = valid & (q_classes[:, np.newaxis] != g_classes[np.newaxis, :])
-    penalty_matrix = np.zeros((q_classes.size, g_classes.size), dtype=np.float32)
+    penalty_matrix = np.zeros(mismatch.shape, dtype=np.float32)
     penalty_matrix[mismatch] = penalty
     return penalty_matrix
