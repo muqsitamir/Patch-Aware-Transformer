@@ -64,6 +64,8 @@ class ClassGuidedTokenSelector(nn.Module):
         deviation_metric='cosine',
         relevance_weight=1.0,
         deviation_weight=1.0,
+        relevance_positive_norm='softmax',
+        deviation_norm='none',
     ):
         super().__init__()
         self.in_planes = int(in_planes)
@@ -76,6 +78,10 @@ class ClassGuidedTokenSelector(nn.Module):
         self.deviation_metric = str(deviation_metric).lower()
         self.relevance_weight = float(relevance_weight)
         self.deviation_weight = float(deviation_weight)
+        self.relevance_positive_norm = str(relevance_positive_norm).lower()
+        self.deviation_norm = str(deviation_norm).lower()
+        if self.deviation_norm == 'centered':
+            self.deviation_norm = 'center'
         self._debug_logged = False
         self._fallback_logged = False
         self._invalid_logged = False
@@ -90,6 +96,10 @@ class ClassGuidedTokenSelector(nn.Module):
             raise ValueError("MODEL.CLASS_TOKEN_SELECT.MODE must be 'relevance', 'deviation', or 'relevance_x_deviation'")
         if self.deviation_metric not in ('cosine', 'l2'):
             raise ValueError("MODEL.CLASS_TOKEN_SELECT.DEVIATION_METRIC must be 'cosine' or 'l2'")
+        if self.relevance_positive_norm not in ('softmax', 'sigmoid'):
+            raise ValueError("MODEL.CLASS_TOKEN_SELECT.RELEVANCE_POSITIVE_NORM must be 'softmax' or 'sigmoid'")
+        if self.deviation_norm not in ('none', 'center', 'zscore'):
+            raise ValueError("MODEL.CLASS_TOKEN_SELECT.DEVIATION_NORM must be 'none', 'center', or 'zscore'")
 
         self.class_embed = nn.Embedding(self.num_classes, self.in_planes)
         self.class_prototype = nn.Embedding(self.num_classes, self.in_planes)
@@ -107,6 +117,32 @@ class ClassGuidedTokenSelector(nn.Module):
         setattr(self, attr_name, True)
         logging.getLogger("PAT.train").info(message)
         print(message)
+
+    @staticmethod
+    def _score_stats(scores):
+        scores = scores.detach().float()
+        return (
+            scores.mean().item(),
+            scores.min().item(),
+            scores.max().item(),
+            scores.std(unbiased=False).item(),
+        )
+
+    def _positive_relevance_weights(self, relevance_scores):
+        if self.relevance_positive_norm == 'softmax':
+            return F.softmax(relevance_scores, dim=1)
+        return torch.sigmoid(relevance_scores)
+
+    def _normalize_deviation(self, deviation_scores):
+        if self.deviation_norm == 'none':
+            return deviation_scores
+
+        centered = deviation_scores - deviation_scores.mean(dim=1, keepdim=True)
+        if self.deviation_norm == 'center':
+            return centered
+
+        std = deviation_scores.std(dim=1, keepdim=True, unbiased=False).clamp_min(1e-6)
+        return centered / std
 
     def forward(self, global_token, patch_tokens, class_labels=None):
         if class_labels is None:
@@ -159,15 +195,17 @@ class ClassGuidedTokenSelector(nn.Module):
             deviation_scores = 1.0 - prototype_similarity
         else:
             deviation_scores = torch.sum((patch_tokens - prototypes.unsqueeze(1)).pow(2), dim=-1)
+        normalized_deviation_scores = self._normalize_deviation(deviation_scores)
 
         weighted_relevance = self.relevance_weight * relevance_scores
-        weighted_deviation = self.deviation_weight * deviation_scores
+        positive_relevance = self._positive_relevance_weights(weighted_relevance)
+        weighted_deviation = self.deviation_weight * normalized_deviation_scores
         if self.mode == 'relevance':
             scores = weighted_relevance
         elif self.mode == 'deviation':
             scores = weighted_deviation
         else:
-            scores = weighted_relevance * weighted_deviation
+            scores = positive_relevance * weighted_deviation
 
         top_scores, top_indices = torch.topk(scores, k=k, dim=1)
         gather_index = top_indices.unsqueeze(-1).expand(-1, -1, patch_tokens.size(-1))
@@ -193,11 +231,14 @@ class ClassGuidedTokenSelector(nn.Module):
         if not self._debug_logged:
             self._debug_logged = True
             message = (
-                'Class-token selection debug: mode={}, deviation_metric={}, global={}, patches={}, '
-                'relevance_scores={}, deviation_scores={}, final_scores={}, selected={}, topk={}, valid={}/{}'
+                'Class-token selection debug: mode={}, deviation_metric={}, deviation_norm={}, '
+                'relevance_positive_norm={}, global={}, patches={}, relevance_scores={}, '
+                'deviation_scores={}, final_scores={}, selected={}, topk={}, valid={}/{}'
             ).format(
                 self.mode,
                 self.deviation_metric,
+                self.deviation_norm,
+                self.relevance_positive_norm,
                 tuple(global_token.shape),
                 tuple(patch_tokens.shape),
                 tuple(relevance_scores.shape),
@@ -211,17 +252,41 @@ class ClassGuidedTokenSelector(nn.Module):
             logging.getLogger("PAT.train").info(message)
             print(message)
         valid_relevance = relevance_scores[valid]
-        valid_deviation = deviation_scores[valid]
+        valid_positive_relevance = positive_relevance[valid]
+        valid_deviation = normalized_deviation_scores[valid]
         valid_scores = scores[valid]
+        rel_mean, rel_min, rel_max, rel_std = self._score_stats(valid_relevance)
+        pos_rel_mean, pos_rel_min, pos_rel_max, pos_rel_std = self._score_stats(valid_positive_relevance)
+        dev_mean, dev_min, dev_max, dev_std = self._score_stats(valid_deviation)
+        score_mean, score_min, score_max, score_std = self._score_stats(valid_scores)
         logging.getLogger("PAT.train").debug(
-            "Class-token selection batch stats: mode=%s, deviation_metric=%s, topk=%d, "
-            "mean_relevance=%.4f, mean_deviation=%.4f, mean_fused_score=%.4f",
+            "Class-token selection batch stats: mode=%s, deviation_metric=%s, deviation_norm=%s, "
+            "relevance_positive_norm=%s, topk=%d, "
+            "relevance(mean=%.4f,min=%.4f,max=%.4f,std=%.4f), "
+            "positive_relevance(mean=%.4f,min=%.4f,max=%.4f,std=%.4f), "
+            "deviation(mean=%.4f,min=%.4f,max=%.4f,std=%.4f), "
+            "final_score(mean=%.4f,min=%.4f,max=%.4f,std=%.4f)",
             self.mode,
             self.deviation_metric,
+            self.deviation_norm,
+            self.relevance_positive_norm,
             k,
-            valid_relevance.detach().float().mean().item(),
-            valid_deviation.detach().float().mean().item(),
-            valid_scores.detach().float().mean().item(),
+            rel_mean,
+            rel_min,
+            rel_max,
+            rel_std,
+            pos_rel_mean,
+            pos_rel_min,
+            pos_rel_max,
+            pos_rel_std,
+            dev_mean,
+            dev_min,
+            dev_max,
+            dev_std,
+            score_mean,
+            score_min,
+            score_max,
+            score_std,
         )
         return fused
 
@@ -253,10 +318,13 @@ def _make_class_token_selector(cfg, in_planes, num_semantic_classes, owner_name,
         deviation_metric=str(getattr(select_cfg, 'DEVIATION_METRIC', 'cosine')),
         relevance_weight=float(getattr(select_cfg, 'RELEVANCE_WEIGHT', 1.0)),
         deviation_weight=float(getattr(select_cfg, 'DEVIATION_WEIGHT', 1.0)),
+        relevance_positive_norm=str(getattr(select_cfg, 'RELEVANCE_POSITIVE_NORM', 'softmax')),
+        deviation_norm=str(getattr(select_cfg, 'DEVIATION_NORM', 'none')),
     )
     print(
         'Class-token selection enabled for {}: num_classes={}, topk={}, fusion={}, beta={}, '
-        'score_norm={}, mode={}, deviation_metric={}, relevance_weight={}, deviation_weight={}'.format(
+        'score_norm={}, mode={}, deviation_metric={}, deviation_norm={}, '
+        'relevance_weight={}, deviation_weight={}, relevance_positive_norm={}'.format(
             owner_name,
             num_classes,
             selector.topk,
@@ -265,8 +333,10 @@ def _make_class_token_selector(cfg, in_planes, num_semantic_classes, owner_name,
             selector.score_norm,
             selector.mode,
             selector.deviation_metric,
+            selector.deviation_norm,
             selector.relevance_weight,
             selector.deviation_weight,
+            selector.relevance_positive_norm,
         )
     )
     return selector, True
