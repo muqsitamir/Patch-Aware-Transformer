@@ -2,7 +2,12 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from utils.class_aware import class_match_matrix, class_mismatch_matrix
+from utils.class_aware import (
+    _class_array,
+    _valid_class_mask,
+    class_match_matrix,
+    class_mismatch_matrix,
+)
 
 
 CLASS_POSTPROCESS_MODES = {
@@ -11,6 +16,7 @@ CLASS_POSTPROCESS_MODES = {
     "same_class_first",
     "same_class_only_topk",
     "hard_same_class_only",
+    "strict_same_class_backfill",
 }
 
 CLASS_SCORE_MODES = {"additive", "multiplicative", "reorder"}
@@ -118,6 +124,76 @@ def _hard_same_class_only(base_order, same_mask, output_topk):
     return result
 
 
+def _strict_same_class_backfill(base_order, same_mask, output_topk):
+    result = np.empty((base_order.shape[0], output_topk), dtype=base_order.dtype)
+
+    for i, order in enumerate(base_order):
+        # Strict mode first filters to same-class candidates in visual-distance
+        # order. Cross-class candidates are used only if that filtered pool is
+        # too small to fill the submission row.
+        same_order = order[same_mask[i, order]]
+        same_take = same_order[:output_topk]
+        if same_take.size >= output_topk:
+            result[i] = same_take
+            continue
+        other_order = order[~same_mask[i, order]]
+        result[i] = np.concatenate([same_take, other_order])[:output_topk]
+    return result
+
+
+def class_postprocess_stats(q_classes, g_classes, class_topk=100):
+    q_classes = _class_array(q_classes)
+    g_classes = _class_array(g_classes)
+    if q_classes is None or g_classes is None:
+        return None
+
+    q_valid = _valid_class_mask(q_classes)
+    g_valid = _valid_class_mask(g_classes)
+    if q_valid is None or g_valid is None:
+        return None
+
+    gallery_counts = {}
+    valid_gallery_classes = g_classes[g_valid]
+    if valid_gallery_classes.size > 0:
+        labels, counts = np.unique(valid_gallery_classes, return_counts=True)
+        gallery_counts = {str(label): int(count) for label, count in zip(labels, counts)}
+
+    same_counts = np.zeros(q_classes.shape[0], dtype=np.int64)
+    for i, (class_name, is_valid) in enumerate(zip(q_classes, q_valid)):
+        if is_valid:
+            same_counts[i] = gallery_counts.get(str(class_name), 0)
+
+    query_class_counts = {}
+    for class_name in q_classes[q_valid]:
+        key = str(class_name)
+        if key not in query_class_counts:
+            query_class_counts[key] = gallery_counts.get(key, 0)
+
+    if same_counts.size > 0:
+        min_count = int(same_counts.min())
+        max_count = int(same_counts.max())
+        avg_count = float(same_counts.mean())
+    else:
+        min_count = 0
+        max_count = 0
+        avg_count = 0.0
+
+    class_topk = max(0, int(class_topk))
+    return {
+        "gallery_counts": gallery_counts,
+        "query_class_counts": query_class_counts,
+        "same_count_min": min_count,
+        "same_count_max": max_count,
+        "same_count_avg": avg_count,
+        "backfill_query_count": int(np.sum(same_counts < class_topk)),
+        "num_queries": int(q_classes.shape[0]),
+        "num_gallery": int(g_classes.shape[0]),
+        "class_topk": class_topk,
+        "missing_query_classes": int(np.sum(~q_valid)),
+        "missing_gallery_classes": int(np.sum(~g_valid)),
+    }
+
+
 def build_class_postprocess_indices(
     distmat,
     q_classes=None,
@@ -166,4 +242,6 @@ def build_class_postprocess_indices(
         return _same_class_first(base_order, same_mask, output_topk)
     if mode == "same_class_only_topk":
         return _same_class_only_topk(base_order, same_mask, output_topk, class_topk)
+    if mode == "strict_same_class_backfill":
+        return _strict_same_class_backfill(base_order, same_mask, output_topk)
     return _hard_same_class_only(base_order, same_mask, output_topk)

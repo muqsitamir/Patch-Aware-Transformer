@@ -22,7 +22,11 @@ from utils.class_aware import (
     split_inference_output,
     use_metadata_classes_for_retrieval,
 )
-from utils.inference_postprocess import apply_query_expansion, build_class_postprocess_indices
+from utils.inference_postprocess import (
+    apply_query_expansion,
+    build_class_postprocess_indices,
+    class_postprocess_stats,
+)
 
 
 SUBMISSION_TOPK = 100
@@ -153,6 +157,53 @@ def save_feature_files(cfg, qf, gf):
             os.makedirs(parent, exist_ok=True)
         np.save(path, features)
 
+
+def _format_class_counts(counts):
+    if not counts:
+        return "none"
+    return ", ".join("{}={}".format(key, counts[key]) for key in sorted(counts))
+
+
+def log_class_postprocess_stats(logger, q_classes, g_classes, class_topk):
+    stats = class_postprocess_stats(q_classes, g_classes, class_topk)
+    if stats is None:
+        logger.info("Class postprocess stats: unavailable (missing usable query/gallery class labels).")
+        return
+
+    logger.info(
+        "Class postprocess stats: gallery images per class: {}".format(
+            _format_class_counts(stats["gallery_counts"])
+        )
+    )
+    logger.info(
+        "Class postprocess stats: same-class gallery items per query class: {}".format(
+            _format_class_counts(stats["query_class_counts"])
+        )
+    )
+    logger.info(
+        "Class postprocess stats: same-class gallery items across queries: "
+        "min={} max={} avg={:.2f}".format(
+            stats["same_count_min"],
+            stats["same_count_max"],
+            stats["same_count_avg"],
+        )
+    )
+    logger.info(
+        "Class postprocess stats: queries requiring backfill (< {} same-class gallery items): {}/{}".format(
+            stats["class_topk"],
+            stats["backfill_query_count"],
+            stats["num_queries"],
+        )
+    )
+    if stats["missing_query_classes"] or stats["missing_gallery_classes"]:
+        logger.info(
+            "Class postprocess stats: missing/invalid labels: queries={} gallery={}".format(
+                stats["missing_query_classes"],
+                stats["missing_gallery_classes"],
+            )
+        )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ReID Training")
     parser.add_argument(
@@ -225,6 +276,8 @@ if __name__ == "__main__":
     mismatch_penalty = class_mismatch_penalty(cfg)
     penalty_matrix = None
     postprocess_mode = class_postprocess
+    if class_postprocess != "off":
+        log_class_postprocess_stats(logger, q_classes, g_classes, SUBMISSION_TOPK)
     if class_postprocess == "penalty_additive" and class_score_mode == "additive":
         penalty_matrix = class_distance_penalty_matrix(q_classes, g_classes, mismatch_penalty)
         # The legacy additive mode biases the k-reciprocal re-ranking distance

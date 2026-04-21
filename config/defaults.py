@@ -255,7 +255,7 @@ _C.TEST.QE_TOPK = 5
 _C.TEST.QE_ALPHA = 1.0
 # Optional semantic class post-processing during submission generation.
 # Modes: off, penalty_additive, same_class_first, same_class_only_topk,
-# hard_same_class_only.
+# hard_same_class_only, strict_same_class_backfill.
 _C.TEST.CLASS_POSTPROCESS = "off"
 _C.TEST.CLASS_TOPK = 100
 _C.TEST.CLASS_MISMATCH_PENALTY = 0.0
