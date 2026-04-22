@@ -2,6 +2,7 @@ import os
 import csv
 import torch
 import argparse
+import logging
 
 import numpy as np
 from config import cfg
@@ -19,9 +20,9 @@ from utils.class_aware import (
     infer_num_semantic_classes,
     model_is_class_aware,
     read_class_csv,
-    split_inference_output,
     use_metadata_classes_for_retrieval,
 )
+from utils.tta import extract_tta_features, log_tta_settings
 from utils.inference_postprocess import (
     apply_query_expansion,
     build_class_postprocess_indices,
@@ -40,6 +41,8 @@ def extract_feature(model, dataloaders, num_query, cfg):
     img_paths = []
     use_class_aware = model_is_class_aware(model)
     use_metadata_classes = use_metadata_classes_for_retrieval(cfg)
+    logger = logging.getLogger("PAT")
+    log_tta_settings(logger, cfg)
     model.eval()
 
     for data in dataloaders:
@@ -47,31 +50,20 @@ def extract_feature(model, dataloaders, num_query, cfg):
         #obtain values form dict data
         n, c, h, w = img.size()
         count += n
-        ff = None
-        class_logits_sum = None
-        for i in range(2):
-            input_img = img.cuda()
-            if use_class_aware and not use_metadata_classes:
-                outputs = model(input_img, return_class_logits=True)
-                f, class_logits = split_inference_output(outputs)
-                if class_logits is not None:
-                    class_logits = class_logits.float()
-                    class_logits_sum = class_logits if class_logits_sum is None else class_logits_sum + class_logits
-            else:
-                f = model(input_img)
-            f = f.float()
-            if ff is None:
-                ff = torch.zeros_like(f).cuda()
-            ff = ff + f
-        fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)
-        ff = ff.div(fnorm.expand_as(ff))
+        input_img = img.cuda()
+        if use_class_aware and not use_metadata_classes:
+            ff, class_logits = extract_tta_features(
+                model, input_img, cfg, return_class_logits=True
+            )
+        else:
+            ff, class_logits = extract_tta_features(model, input_img, cfg)
         features.append(ff)
         if use_metadata_classes:
             class_targets = get_batch_class_targets(data)
             if class_targets is not None:
                 pred_classes.append(class_targets.cpu())
-        elif use_class_aware and class_logits_sum is not None:
-            pred_classes.append(class_logits_sum.argmax(1).cpu())
+        elif use_class_aware and class_logits is not None:
+            pred_classes.append(class_logits.argmax(1).cpu())
         img_paths.extend(data.get('img_path', []))
     features = torch.cat(features, 0)
     if pred_classes:

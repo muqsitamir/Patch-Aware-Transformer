@@ -25,9 +25,9 @@ from utils.class_aware import (
     model_num_semantic_classes,
     semantic_accuracy,
     semantic_classification_loss,
-    split_inference_output,
     use_metadata_classes_for_retrieval,
 )
+from utils.tta import extract_tta_features, log_tta_settings
 
 def part_attention_vit_do_train_with_amp(cfg,
              model,
@@ -323,6 +323,7 @@ def do_inference(cfg,
     evaluator.reset()
     use_class_aware = model_is_class_aware(model)
     use_metadata_classes = use_metadata_classes_for_retrieval(cfg)
+    log_tta_settings(logger, cfg)
     img_path_list = []
     t0 = time.time()
     for n_iter, informations in enumerate(val_loader):
@@ -335,16 +336,15 @@ def do_inference(cfg,
             img = img.to(device)
             # camids = camids.to(device)
             if use_metadata_classes:
-                feat = model(img)
+                feat, _ = extract_tta_features(model, img, cfg)
                 pred_classes = get_batch_class_targets(informations)
                 evaluator.update((feat, pid, camids, pred_classes))
             elif use_class_aware:
-                output = model(img, return_class_logits=True)
-                feat, class_logits = split_inference_output(output)
+                feat, class_logits = extract_tta_features(model, img, cfg, return_class_logits=True)
                 pred_classes = class_logits.argmax(1).cpu() if class_logits is not None else None
                 evaluator.update((feat, pid, camids, pred_classes))
             else:
-                feat = model(img)
+                feat, _ = extract_tta_features(model, img, cfg)
                 evaluator.update((feat, pid, camids))
             img_path_list.extend(imgpath)
 

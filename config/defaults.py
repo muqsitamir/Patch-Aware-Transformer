@@ -253,6 +253,11 @@ _C.TEST.SKIP_EVAL_IF_DUMMY_IDS = True
 _C.TEST.QUERY_EXPANSION = False
 _C.TEST.QE_TOPK = 5
 _C.TEST.QE_ALPHA = 1.0
+# Optional test-time augmentation for inference feature extraction.
+_C.TEST.TTA_ENABLED = False
+_C.TEST.TTA_FLIP = True
+_C.TEST.TTA_SCALES = [1.0]
+_C.TEST.TTA_MERGE = "mean"
 # Optional semantic class post-processing during submission generation.
 # Modes: off, penalty_additive, same_class_first, same_class_only_topk,
 # hard_same_class_only, strict_same_class_backfill.
