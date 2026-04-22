@@ -20,7 +20,12 @@ _root = os.getenv("REID_DATASETS", "../../data")
 
 
 def _uses_urban_class_csv(dataset_name):
-    return dataset_name in ('UrbanElementsReID', 'UrbanElementsReID_test')
+    return dataset_name in (
+        'UrbanElementsReID',
+        'UrbanElementsReID_test',
+        'UrbanElementsReID_localval_train',
+        'UrbanElementsReID_localval_test',
+    )
 
 
 def _dataset_root(cfg):
