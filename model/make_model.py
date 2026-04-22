@@ -66,6 +66,7 @@ class ClassGuidedTokenSelector(nn.Module):
         deviation_weight=1.0,
         relevance_positive_norm='softmax',
         deviation_norm='none',
+        stats_log_period=100,
     ):
         super().__init__()
         self.in_planes = int(in_planes)
@@ -82,6 +83,8 @@ class ClassGuidedTokenSelector(nn.Module):
         self.deviation_norm = str(deviation_norm).lower()
         if self.deviation_norm == 'centered':
             self.deviation_norm = 'center'
+        self.stats_log_period = int(stats_log_period)
+        self._stats_log_count = 0
         self._debug_logged = False
         self._fallback_logged = False
         self._invalid_logged = False
@@ -100,6 +103,8 @@ class ClassGuidedTokenSelector(nn.Module):
             raise ValueError("MODEL.CLASS_TOKEN_SELECT.RELEVANCE_POSITIVE_NORM must be 'softmax' or 'sigmoid'")
         if self.deviation_norm not in ('none', 'center', 'zscore'):
             raise ValueError("MODEL.CLASS_TOKEN_SELECT.DEVIATION_NORM must be 'none', 'center', or 'zscore'")
+        if self.stats_log_period < 0:
+            raise ValueError("MODEL.CLASS_TOKEN_SELECT.STATS_LOG_PERIOD must be >= 0")
 
         self.class_embed = nn.Embedding(self.num_classes, self.in_planes)
         self.class_prototype = nn.Embedding(self.num_classes, self.in_planes)
@@ -251,43 +256,46 @@ class ClassGuidedTokenSelector(nn.Module):
             )
             logging.getLogger("PAT.train").info(message)
             print(message)
-        valid_relevance = relevance_scores[valid]
-        valid_positive_relevance = positive_relevance[valid]
-        valid_deviation = normalized_deviation_scores[valid]
-        valid_scores = scores[valid]
-        rel_mean, rel_min, rel_max, rel_std = self._score_stats(valid_relevance)
-        pos_rel_mean, pos_rel_min, pos_rel_max, pos_rel_std = self._score_stats(valid_positive_relevance)
-        dev_mean, dev_min, dev_max, dev_std = self._score_stats(valid_deviation)
-        score_mean, score_min, score_max, score_std = self._score_stats(valid_scores)
-        logging.getLogger("PAT.train").debug(
-            "Class-token selection batch stats: mode=%s, deviation_metric=%s, deviation_norm=%s, "
-            "relevance_positive_norm=%s, topk=%d, "
-            "relevance(mean=%.4f,min=%.4f,max=%.4f,std=%.4f), "
-            "positive_relevance(mean=%.4f,min=%.4f,max=%.4f,std=%.4f), "
-            "deviation(mean=%.4f,min=%.4f,max=%.4f,std=%.4f), "
-            "final_score(mean=%.4f,min=%.4f,max=%.4f,std=%.4f)",
-            self.mode,
-            self.deviation_metric,
-            self.deviation_norm,
-            self.relevance_positive_norm,
-            k,
-            rel_mean,
-            rel_min,
-            rel_max,
-            rel_std,
-            pos_rel_mean,
-            pos_rel_min,
-            pos_rel_max,
-            pos_rel_std,
-            dev_mean,
-            dev_min,
-            dev_max,
-            dev_std,
-            score_mean,
-            score_min,
-            score_max,
-            score_std,
-        )
+        self._stats_log_count += 1
+        if self.stats_log_period > 0 and self._stats_log_count % self.stats_log_period == 0:
+            valid_relevance = relevance_scores[valid]
+            valid_positive_relevance = positive_relevance[valid]
+            valid_deviation = normalized_deviation_scores[valid]
+            valid_scores = scores[valid]
+            rel_mean, rel_min, rel_max, rel_std = self._score_stats(valid_relevance)
+            pos_rel_mean, pos_rel_min, pos_rel_max, pos_rel_std = self._score_stats(valid_positive_relevance)
+            dev_mean, dev_min, dev_max, dev_std = self._score_stats(valid_deviation)
+            score_mean, score_min, score_max, score_std = self._score_stats(valid_scores)
+            logging.getLogger("PAT.train").info(
+                "Class-token selection stats[%d]: mode=%s, deviation_metric=%s, deviation_norm=%s, "
+                "relevance_positive_norm=%s, topk=%d, "
+                "relevance(mean=%.4f,min=%.4f,max=%.4f,std=%.4f), "
+                "positive_relevance(mean=%.4f,min=%.4f,max=%.4f,std=%.4f), "
+                "deviation(mean=%.4f,min=%.4f,max=%.4f,std=%.4f), "
+                "final_score(mean=%.4f,min=%.4f,max=%.4f,std=%.4f)",
+                self._stats_log_count,
+                self.mode,
+                self.deviation_metric,
+                self.deviation_norm,
+                self.relevance_positive_norm,
+                k,
+                rel_mean,
+                rel_min,
+                rel_max,
+                rel_std,
+                pos_rel_mean,
+                pos_rel_min,
+                pos_rel_max,
+                pos_rel_std,
+                dev_mean,
+                dev_min,
+                dev_max,
+                dev_std,
+                score_mean,
+                score_min,
+                score_max,
+                score_std,
+            )
         return fused
 
 
@@ -320,11 +328,12 @@ def _make_class_token_selector(cfg, in_planes, num_semantic_classes, owner_name,
         deviation_weight=float(getattr(select_cfg, 'DEVIATION_WEIGHT', 1.0)),
         relevance_positive_norm=str(getattr(select_cfg, 'RELEVANCE_POSITIVE_NORM', 'softmax')),
         deviation_norm=str(getattr(select_cfg, 'DEVIATION_NORM', 'none')),
+        stats_log_period=int(getattr(select_cfg, 'STATS_LOG_PERIOD', 100)),
     )
     print(
         'Class-token selection enabled for {}: num_classes={}, topk={}, fusion={}, beta={}, '
         'score_norm={}, mode={}, deviation_metric={}, deviation_norm={}, '
-        'relevance_weight={}, deviation_weight={}, relevance_positive_norm={}'.format(
+        'relevance_weight={}, deviation_weight={}, relevance_positive_norm={}, stats_log_period={}'.format(
             owner_name,
             num_classes,
             selector.topk,
@@ -337,6 +346,7 @@ def _make_class_token_selector(cfg, in_planes, num_semantic_classes, owner_name,
             selector.relevance_weight,
             selector.deviation_weight,
             selector.relevance_positive_norm,
+            selector.stats_log_period,
         )
     )
     return selector, True
