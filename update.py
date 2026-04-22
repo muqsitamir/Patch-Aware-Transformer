@@ -23,6 +23,15 @@ from utils.class_aware import (
     use_metadata_classes_for_retrieval,
 )
 from utils.tta import extract_tta_features, log_tta_settings
+from utils.group_rerank import (
+    apply_group_rerank_to_distmat,
+    class_group_mapping,
+    class_names_for_probabilities,
+    group_rerank_mode,
+    log_group_rerank,
+    rank_change_examples,
+    resolve_query_gallery_classes,
+)
 from utils.inference_postprocess import (
     apply_query_expansion,
     build_class_postprocess_indices,
@@ -37,6 +46,7 @@ SUBMISSION_TOPK = 100
 def extract_feature(model, dataloaders, num_query, cfg):
     features = []
     pred_classes = []
+    pred_probs = []
     count = 0
     img_paths = []
     use_class_aware = model_is_class_aware(model)
@@ -63,13 +73,19 @@ def extract_feature(model, dataloaders, num_query, cfg):
             if class_targets is not None:
                 pred_classes.append(class_targets.cpu())
         elif use_class_aware and class_logits is not None:
-            pred_classes.append(class_logits.argmax(1).cpu())
+            probs = torch.softmax(class_logits.float(), dim=1).cpu()
+            pred_classes.append(probs.argmax(1))
+            pred_probs.append(probs)
         img_paths.extend(data.get('img_path', []))
     features = torch.cat(features, 0)
     if pred_classes:
         pred_classes = torch.cat(pred_classes, 0).numpy()
     else:
         pred_classes = None
+    if pred_probs:
+        pred_probs = torch.cat(pred_probs, 0).numpy()
+    else:
+        pred_probs = None
 
     # query
     qf = features[:num_query]
@@ -77,9 +93,11 @@ def extract_feature(model, dataloaders, num_query, cfg):
     gf = features[num_query:]
     q_pred_classes = pred_classes[:num_query] if pred_classes is not None else None
     g_pred_classes = pred_classes[num_query:] if pred_classes is not None else None
+    q_pred_probs = pred_probs[:num_query] if pred_probs is not None else None
+    g_pred_probs = pred_probs[num_query:] if pred_probs is not None else None
     q_img_paths = img_paths[:num_query]
     g_img_paths = img_paths[num_query:]
-    return qf, gf, q_pred_classes, g_pred_classes, q_img_paths, g_img_paths
+    return qf, gf, q_pred_classes, g_pred_classes, q_pred_probs, g_pred_probs, q_img_paths, g_img_paths
 
 
 def dataset_root(cfg):
@@ -239,7 +257,7 @@ if __name__ == "__main__":
         else:
             do_inf(cfg, model, val_loader, num_query, dataset_name=testname)
     with torch.no_grad():
-        qf, gf, q_pred_classes, g_pred_classes, q_img_paths, g_img_paths = extract_feature(model, val_loader, num_query, cfg)
+        qf, gf, q_pred_classes, g_pred_classes, q_pred_probs, g_pred_probs, q_img_paths, g_img_paths = extract_feature(model, val_loader, num_query, cfg)
 
     q_csv_classes, g_csv_classes = load_csv_submission_classes(cfg, q_img_paths, g_img_paths)
     q_classes, g_classes, class_source = select_submission_classes(
@@ -277,6 +295,39 @@ if __name__ == "__main__":
         postprocess_mode = "off"
 
     re_rank_dist = re_ranking(q_g_dist, q_q_dist, g_g_dist, q_g_penalty=penalty_matrix)
+    if group_rerank_mode(cfg) != "none":
+        base_group_dist = np.asarray(re_rank_dist, dtype=np.float32).copy()
+        combined_pred_classes = None
+        if q_pred_classes is not None and g_pred_classes is not None:
+            combined_pred_classes = np.concatenate([q_pred_classes, g_pred_classes])
+        group_q_classes, group_g_classes, group_class_source = resolve_query_gallery_classes(
+            cfg,
+            combined_pred_classes,
+            q_img_paths + g_img_paths,
+            len(q_img_paths),
+        )
+        if group_q_classes is None or group_g_classes is None:
+            group_q_classes, group_g_classes = q_classes, g_classes
+        re_rank_dist, group_info = apply_group_rerank_to_distmat(
+            re_rank_dist,
+            group_q_classes,
+            group_g_classes,
+            cfg,
+            q_class_probs=q_pred_probs,
+            class_names=class_names_for_probabilities(cfg),
+        )
+        group_info["resolved_class_source"] = group_class_source
+        group_examples = rank_change_examples(
+            base_group_dist,
+            re_rank_dist,
+            q_img_paths + g_img_paths,
+            len(q_img_paths),
+            group_q_classes,
+            group_g_classes,
+            limit=int(getattr(cfg.TEST, "LOG_RANK_CHANGES", 5)),
+            mapping=class_group_mapping(cfg),
+        )
+        log_group_rerank(logger, group_info, group_examples)
 
     indices = build_class_postprocess_indices(
         re_rank_dist,

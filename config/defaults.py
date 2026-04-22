@@ -258,6 +258,18 @@ _C.TEST.TTA_ENABLED = False
 _C.TEST.TTA_FLIP = True
 _C.TEST.TTA_SCALES = [1.0]
 _C.TEST.TTA_MERGE = "mean"
+# Optional class-group post-processing. Scores use:
+# final_score = retrieval_score + GROUP_RERANK_LAMBDA * group_bonus.
+_C.TEST.RERANK_MODE = "none"
+_C.TEST.GROUP_RERANK_LAMBDA = 0.2
+_C.TEST.GROUP_BONUS_MODE = "hard"
+_C.TEST.GROUP_CLASS_SOURCE = "auto"
+_C.TEST.CLASS_GROUPS = []
+_C.TEST.CLASS_GROUP_FILE = ""
+_C.TEST.QUERY_GROUP_CSV = ""
+_C.TEST.GALLERY_GROUP_CSV = ""
+_C.TEST.LOG_RANK_CHANGES = 5
+_C.TEST.METRICS_PATH = ""
 # Optional semantic class post-processing during submission generation.
 # Modes: off, penalty_additive, same_class_first, same_class_only_topk,
 # hard_same_class_only, strict_same_class_backfill.

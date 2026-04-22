@@ -26,6 +26,7 @@ from utils.class_aware import (
     use_metadata_classes_for_retrieval,
 )
 from utils.tta import extract_tta_features, log_tta_settings
+from utils.group_rerank import save_metrics
 
 def ori_vit_do_train_with_amp(cfg,
              model,
@@ -273,6 +274,8 @@ def do_inference(cfg,
         query_expansion=bool(getattr(cfg.TEST, "QUERY_EXPANSION", False)),
         qe_topk=int(getattr(cfg.TEST, "QE_TOPK", 5)),
         qe_alpha=float(getattr(cfg.TEST, "QE_ALPHA", 1.0)),
+        cfg=cfg,
+        dataset_name=dataset_name,
     )
 
     evaluator.reset()
@@ -293,14 +296,15 @@ def do_inference(cfg,
             if use_metadata_classes:
                 feat, _ = extract_tta_features(model, img, cfg)
                 pred_classes = get_batch_class_targets(informations)
-                evaluator.update((feat, pid, camids, pred_classes))
+                evaluator.update((feat, pid, camids, pred_classes, None, imgpath))
             elif use_class_aware:
                 feat, class_logits = extract_tta_features(model, img, cfg, return_class_logits=True)
-                pred_classes = class_logits.argmax(1).cpu() if class_logits is not None else None
-                evaluator.update((feat, pid, camids, pred_classes))
+                pred_probs = torch.softmax(class_logits.float(), dim=1).cpu() if class_logits is not None else None
+                pred_classes = pred_probs.argmax(1) if pred_probs is not None else None
+                evaluator.update((feat, pid, camids, pred_classes, pred_probs, imgpath))
             else:
                 feat, _ = extract_tta_features(model, img, cfg)
-                evaluator.update((feat, pid, camids))
+                evaluator.update((feat, pid, camids, None, None, imgpath))
             img_path_list.extend(imgpath)
 
     cmc, mAP, _, _, _, _, _ = evaluator.compute()
@@ -308,5 +312,6 @@ def do_inference(cfg,
     logger.info("mAP: {:.1%}".format(mAP))
     for r in [1, 5, 10]:
         logger.info("CMC curve, Rank-{:<3}:{:.1%}".format(r, cmc[r - 1]))
+    save_metrics(cfg, dataset_name, cmc, mAP, getattr(evaluator, "last_group_info", None))
     logger.info("total inference time: {:.2f}".format(time.time() - t0))
     return cmc, mAP

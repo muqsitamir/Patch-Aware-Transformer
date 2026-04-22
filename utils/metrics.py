@@ -1,11 +1,21 @@
 from re import T
 from time import time
+import logging
 import torch
 import numpy as np
 import os
 from utils.reranking import re_ranking
 from utils.class_aware import apply_class_distance_penalty, class_distance_penalty_matrix
 from utils.inference_postprocess import apply_query_expansion
+from utils.group_rerank import (
+    apply_group_rerank_to_distmat,
+    class_names_for_probabilities,
+    class_group_mapping,
+    group_rerank_mode,
+    log_group_rerank,
+    rank_change_examples,
+    resolve_query_gallery_classes,
+)
 
 
 def euclidean_distance(qf, gf):
@@ -102,6 +112,8 @@ class R1_mAP_eval():
         query_expansion=False,
         qe_topk=5,
         qe_alpha=1.0,
+        cfg=None,
+        dataset_name=None,
     ):
         super(R1_mAP_eval, self).__init__()
         self.num_query = num_query
@@ -112,15 +124,27 @@ class R1_mAP_eval():
         self.query_expansion = query_expansion
         self.qe_topk = qe_topk
         self.qe_alpha = qe_alpha
+        self.cfg = cfg
+        self.dataset_name = dataset_name
+        self.last_group_info = None
+        self.last_group_examples = []
 
     def reset(self):
         self.feats = []
         self.pids = []
         self.camids = []
         self.pred_classes = []
+        self.pred_class_probs = []
+        self.img_paths = []
 
     def update(self, output):  # called once for each batch
-        if len(output) == 4:
+        pred_prob = None
+        img_path = None
+        if len(output) == 6:
+            feat, pid, camid, pred_class, pred_prob, img_path = output
+        elif len(output) == 5:
+            feat, pid, camid, pred_class, img_path = output
+        elif len(output) == 4:
             feat, pid, camid, pred_class = output
         else:
             feat, pid, camid = output
@@ -130,6 +154,10 @@ class R1_mAP_eval():
         self.camids.extend(np.asarray(camid))
         if pred_class is not None:
             self.pred_classes.extend(np.asarray(pred_class))
+        if pred_prob is not None:
+            self.pred_class_probs.extend(np.asarray(pred_prob))
+        if img_path is not None:
+            self.img_paths.extend(list(img_path))
 
     def compute(self):  # called after each epoch
         feats = torch.cat(self.feats, dim=0)
@@ -170,6 +198,45 @@ class R1_mAP_eval():
             # print('=> Computing DistMat with euclidean_distance')
             distmat = euclidean_distance(qf, gf)
             distmat = apply_class_distance_penalty(distmat, q_classes, g_classes, self.class_penalty)
+        base_distmat = np.asarray(distmat, dtype=np.float32).copy()
+        if self.cfg is not None and group_rerank_mode(self.cfg) != "none":
+            resolved_q_classes, resolved_g_classes, class_source = resolve_query_gallery_classes(
+                self.cfg,
+                np.asarray(self.pred_classes) if self.pred_classes else None,
+                self.img_paths,
+                self.num_query,
+            )
+            if resolved_q_classes is not None and resolved_g_classes is not None:
+                q_classes = resolved_q_classes
+                g_classes = resolved_g_classes
+
+            q_class_probs = None
+            if len(self.pred_class_probs) == len(self.pids):
+                q_class_probs = np.asarray(self.pred_class_probs[:self.num_query], dtype=np.float32)
+            distmat, self.last_group_info = apply_group_rerank_to_distmat(
+                distmat,
+                q_classes,
+                g_classes,
+                self.cfg,
+                q_class_probs=q_class_probs,
+                class_names=class_names_for_probabilities(self.cfg),
+            )
+            self.last_group_info["resolved_class_source"] = class_source
+            self.last_group_examples = rank_change_examples(
+                base_distmat,
+                distmat,
+                self.img_paths,
+                self.num_query,
+                q_classes,
+                g_classes,
+                limit=int(getattr(self.cfg.TEST, "LOG_RANK_CHANGES", 5)),
+                mapping=class_group_mapping(self.cfg),
+            )
+            log_group_rerank(
+                logging.getLogger("PAT.test"),
+                self.last_group_info,
+                self.last_group_examples,
+            )
         cmc, mAP = eval_func(distmat, q_pids, g_pids, q_camids, g_camids)
 
         return cmc, mAP, distmat, self.pids, self.camids, qf, gf
