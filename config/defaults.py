@@ -142,7 +142,8 @@ _C.DATASETS.TEST = ('DukeMTMC',)
 # Root directory where datasets should be used (and downloaded if not found)
 _C.DATASETS.ROOT_DIR = ('../data')
 # Dataset selection mode. "challenge_only" keeps existing behavior;
-# "external_only" trains/evaluates loaders against DATASETS.EXTERNAL_ROOT.
+# "external_only" trains/evaluates loaders against DATASETS.EXTERNAL_ROOT;
+# "mixed_train" trains on challenge ROOT_DIR + external EXTERNAL_ROOT.
 _C.DATASETS.MODE = 'challenge_only'
 _C.DATASETS.EXTERNAL_ROOT = ''
 # combine both train and test sets
@@ -162,6 +163,7 @@ _C.DATALOADER.NAIVE_WAY = True
 # Number of instance for one batch
 _C.DATALOADER.NUM_INSTANCE = 16
 _C.DATALOADER.INDIVIDUAL = False
+_C.DATALOADER.MIXED_EXTERNAL_RATIO = 0.2
 # camera as domain
 _C.DATALOADER.CAMERA_TO_DOMAIN = False # True when single-source
 # drop last incomplete batch

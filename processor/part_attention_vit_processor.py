@@ -30,6 +30,21 @@ from utils.class_aware import (
 from utils.tta import extract_tta_features, log_tta_settings
 from utils.group_rerank import save_metrics
 
+
+def _test_names(cfg):
+    names = getattr(cfg.DATASETS, "TEST", ())
+    if isinstance(names, str):
+        return (names,)
+    return tuple(names)
+
+
+def _log_validation_header(logger, label, dataset_name, epoch=None):
+    if epoch is None:
+        logger.info("{} validation dataset: {}".format(label, dataset_name))
+    else:
+        logger.info("{} validation dataset: {} - Epoch: {}".format(label, dataset_name, epoch))
+
+
 def part_attention_vit_do_train_with_amp(cfg,
              model,
              train_loader,
@@ -95,6 +110,7 @@ def part_attention_vit_do_train_with_amp(cfg,
     best_index = None
     last_checkpoint_epoch = None
     val_name = resolve_eval_dataset_name(cfg)
+    secondary_val_names = _test_names(cfg)[1:]
     for epoch in range(1, epochs + 1):
         start_time = time.time()
         total_loss_meter.reset()
@@ -228,6 +244,7 @@ def part_attention_vit_do_train_with_amp(cfg,
                         logger.info("=====best epoch: {} mAP: {:.1%}; saved {}=====".format(best_index, best_mAP, best_checkpoint_path))
                     torch.cuda.empty_cache()
             else:
+                _log_validation_header(logger, "Primary", val_name, epoch)
                 cmc, mAP = do_inference(cfg, model, val_loader, num_query, dataset_name=val_name)
                 if cmc is not None and mAP is not None:
                     tbWriter.add_scalar('val/Rank@1', cmc[0], epoch)
@@ -237,6 +254,20 @@ def part_attention_vit_do_train_with_amp(cfg,
                         best_index = epoch
                         torch.save(model.state_dict(), best_checkpoint_path)
                         logger.info("=====best epoch: {} mAP: {:.1%}; saved {}=====".format(best_index, best_mAP, best_checkpoint_path))
+                for secondary_name in secondary_val_names:
+                    _log_validation_header(logger, "Secondary", secondary_name, epoch)
+                    secondary_loader, secondary_num_query = build_reid_test_loader(cfg, secondary_name)
+                    secondary_cmc, secondary_mAP = do_inference(
+                        cfg,
+                        model,
+                        secondary_loader,
+                        secondary_num_query,
+                        dataset_name=secondary_name,
+                    )
+                    if secondary_cmc is not None and secondary_mAP is not None:
+                        scalar_name = str(secondary_name).replace("/", "_")
+                        tbWriter.add_scalar('val_secondary/{}/Rank@1'.format(scalar_name), secondary_cmc[0], epoch)
+                        tbWriter.add_scalar('val_secondary/{}/mAP'.format(scalar_name), secondary_mAP, epoch)
 
         if epoch % checkpoint_period == 0:
             last_checkpoint_epoch = epoch
@@ -275,6 +306,7 @@ def part_attention_vit_do_train_with_amp(cfg,
             if 'ALL' in testname:
                 testname = 'DG_' + testname.split('_')[1]
             val_loader, num_query = build_reid_test_loader(cfg, testname)
+            _log_validation_header(logger, "Final", testname)
             do_inference(cfg, eval_model, val_loader, num_query, dataset_name=testname)
     
     if cfg.SOLVER.DELETE_OLD_CHECKPOINTS and eval_model is not None:
@@ -300,6 +332,7 @@ def do_inference(cfg,
     device = "cuda"
     logger = logging.getLogger("PAT.test")
     logger.info("Enter inferencing")
+    logger.info("Validation dataset: {}".format(dataset_name))
     if device:
         if torch.cuda.device_count() > 1:
             print('Using {} GPUs for inference'.format(torch.cuda.device_count()))
