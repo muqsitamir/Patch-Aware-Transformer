@@ -2,6 +2,7 @@ from processor.part_attention_vit_processor import part_attention_vit_do_train_w
 from processor.ori_vit_processor_with_amp import ori_vit_do_train_with_amp
 from utils.logger import setup_logger
 from data.build_DG_dataloader import build_reid_train_loader, build_reid_test_loader
+from data.transforms.build import describe_train_transforms, describe_test_transforms
 from model import make_model
 from solver import make_optimizer
 from solver.scheduler_factory import create_scheduler
@@ -28,13 +29,21 @@ def _load_finetune_checkpoint_if_requested(cfg, model):
     model.load_param_finetune(finetune_path)
 
 def set_seed(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.benchmark = False
+    return {
+        "seed": seed,
+        "pythonhashseed": os.environ["PYTHONHASHSEED"],
+        "cudnn_deterministic": torch.backends.cudnn.deterministic,
+        "cudnn_benchmark": torch.backends.cudnn.benchmark,
+    }
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="ReID Training")
@@ -52,7 +61,7 @@ if __name__ == '__main__':
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 
-    set_seed(cfg.SOLVER.SEED)
+    seed_state = set_seed(cfg.SOLVER.SEED)
 
     if cfg.MODEL.DIST_TRAIN:
         torch.cuda.set_device(args.local_rank)
@@ -71,6 +80,16 @@ if __name__ == '__main__':
             config_str = "\n" + cf.read()
             logger.info(config_str)
     logger.info("Running with config:\n{}".format(cfg))
+    logger.info(
+        "Reproducibility Config: seed={} pythonhashseed={} cudnn.deterministic={} cudnn.benchmark={}".format(
+            seed_state["seed"],
+            seed_state["pythonhashseed"],
+            seed_state["cudnn_deterministic"],
+            seed_state["cudnn_benchmark"],
+        )
+    )
+    logger.info(describe_train_transforms(cfg))
+    logger.info(describe_test_transforms(cfg))
 
     if cfg.MODEL.DIST_TRAIN:
         torch.distributed.init_process_group(backend='nccl', init_method='env://')

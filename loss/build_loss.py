@@ -4,12 +4,20 @@ from .triplet_loss import TripletLoss
 from .center_loss import CenterLoss
 from .ce_labelSmooth import CrossEntropyLabelSmooth as CE_LS
 
+PART_ATTENTION_MODEL_NAMES = {'part_attention_vit', 'local_attention_vit'}
+
 feat_dim_dict = {
     'local_attention_vit': 768,
+    'part_attention_vit': 768,
     'vit': 768,
     'resnet18': 512,
     'resnet34': 512
 }
+
+
+def _uses_part_attention_soft_labels(cfg, model_name):
+    return model_name in PART_ATTENTION_MODEL_NAMES and cfg.MODEL.PC_LOSS
+
 
 def build_loss(cfg, num_classes):
     name = cfg.MODEL.NAME
@@ -31,7 +39,7 @@ def build_loss(cfg, num_classes):
               'but got {}'.format(cfg.MODEL.METRIC_LOSS_TYPE))
 
     if cfg.MODEL.IF_LABELSMOOTH == 'on':
-        if name == 'local_attention_vit' and cfg.MODEL.PC_LOSS:
+        if _uses_part_attention_soft_labels(cfg, name):
             xent = CrossEntropyLabelSmooth(num_classes=num_classes)
         else:
             xent = CE_LS(num_classes=num_classes)
@@ -46,7 +54,7 @@ def build_loss(cfg, num_classes):
         def loss_func(score, feat, target, domains=None, t_domains=None, all_posvid=None, soft_label=False, soft_weight=0.1, soft_lambda=0.2):
             if cfg.MODEL.METRIC_LOSS_TYPE == 'triplet':
                 if cfg.MODEL.IF_LABELSMOOTH == 'on':
-                    if name == 'local_attention_vit' and cfg.MODEL.PC_LOSS:
+                    if _uses_part_attention_soft_labels(cfg, name):
                         ID_LOSS = xent(score, target, all_posvid=all_posvid, soft_label=soft_label,soft_weight=soft_weight, soft_lambda=soft_lambda)
                     else:
                         ID_LOSS = xent(score, target)
@@ -74,4 +82,3 @@ def build_loss(cfg, num_classes):
         print('expected sampler should be softmax, triplet, softmax_triplet or softmax_triplet_center'
               'but got {}'.format(cfg.DATALOADER.SAMPLER))
     return loss_func, center_criterion
-

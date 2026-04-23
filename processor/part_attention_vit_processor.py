@@ -225,11 +225,11 @@ def part_attention_vit_do_train_with_amp(cfg,
             elif cfg.MODEL.DIST_TRAIN:
                 if dist.get_rank() == 0:
                     model.eval()
-                    for n_iter, (img, vid, camid, camids, target_view, _) in enumerate(val_loader):
+                    for n_iter, informations in enumerate(val_loader):
                         with torch.no_grad():
-                            img = img.to(device)
-                            camids = camids.to(device)
-                            target_view = target_view.to(device)
+                            img = informations['images'].to(device)
+                            vid = informations['targets']
+                            camid = informations['camid']
                             feat = model(img)
                             evaluator.update((feat, vid, camid))
                     cmc, mAP, _, _, _, _, _ = evaluator.compute()
