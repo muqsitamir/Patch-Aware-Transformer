@@ -42,7 +42,7 @@ def build_loss(cfg, num_classes):
             return F.cross_entropy(score, target)
 
     # softmax & triplet
-    elif cfg.DATALOADER.SAMPLER == 'softmax_triplet' or 'GS':
+    elif sampler in ('softmax_triplet', 'GS'):
         def loss_func(score, feat, target, domains=None, t_domains=None, all_posvid=None, soft_label=False, soft_weight=0.1, soft_lambda=0.2):
             if cfg.MODEL.METRIC_LOSS_TYPE == 'triplet':
                 if cfg.MODEL.IF_LABELSMOOTH == 'on':
@@ -74,5 +74,4 @@ def build_loss(cfg, num_classes):
         print('expected sampler should be softmax, triplet, softmax_triplet or softmax_triplet_center'
               'but got {}'.format(cfg.DATALOADER.SAMPLER))
     return loss_func, center_criterion
-
 
