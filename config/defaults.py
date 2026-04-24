@@ -188,6 +188,9 @@ _C.SOLVER.BIAS_LR_FACTOR = 1
 _C.SOLVER.SEED = 1234
 # Momentum
 _C.SOLVER.MOMENTUM = 0.9
+# Optional gradient clipping for mixed-precision stability.
+_C.SOLVER.GRAD_CLIP_ENABLED = False
+_C.SOLVER.GRAD_CLIP_NORM = 1.0
 # Margin of triplet loss
 _C.SOLVER.MARGIN = 0.3
 # Learning rate of SGD to learn the centers of center loss

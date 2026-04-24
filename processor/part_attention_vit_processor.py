@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import random
 import time
@@ -45,6 +46,109 @@ def _log_validation_header(logger, label, dataset_name, epoch=None):
         logger.info("{} validation dataset: {} - Epoch: {}".format(label, dataset_name, epoch))
 
 
+def _iter_named_tensors(prefix, value):
+    if value is None:
+        return
+    if torch.is_tensor(value):
+        yield prefix, value
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            child_prefix = "{}.{}".format(prefix, key) if prefix else str(key)
+            yield from _iter_named_tensors(child_prefix, item)
+        return
+    if isinstance(value, (list, tuple)):
+        for idx, item in enumerate(value):
+            child_prefix = "{}[{}]".format(prefix, idx) if prefix else "[{}]".format(idx)
+            yield from _iter_named_tensors(child_prefix, item)
+
+
+def _tensor_max_abs(tensor):
+    if tensor.numel() == 0:
+        return 0.0
+    safe_tensor = torch.nan_to_num(tensor.detach(), nan=0.0, posinf=0.0, neginf=0.0)
+    return float(safe_tensor.abs().max().item())
+
+
+def _tensor_stats(tensor):
+    tensor = tensor.detach()
+    return {
+        "shape": tuple(tensor.shape),
+        "dtype": str(tensor.dtype).replace("torch.", ""),
+        "nan": int(torch.isnan(tensor).sum().item()),
+        "inf": int(torch.isinf(tensor).sum().item()),
+        "max_abs": _tensor_max_abs(tensor),
+    }
+
+
+def _find_nonfinite_tensors(items):
+    problems = []
+    for name, value in items:
+        for tensor_name, tensor in _iter_named_tensors(name, value):
+            if not torch.is_tensor(tensor) or not tensor.dtype.is_floating_point:
+                continue
+            if bool(torch.isfinite(tensor.detach()).all().item()):
+                continue
+            problems.append((tensor_name, _tensor_stats(tensor)))
+    return problems
+
+
+def _find_nonfinite_grads(model, limit=10):
+    problems = []
+    for name, param in model.named_parameters():
+        if param.grad is None or not param.grad.dtype.is_floating_point:
+            continue
+        if bool(torch.isfinite(param.grad.detach()).all().item()):
+            continue
+        problems.append((name, _tensor_stats(param.grad)))
+        if len(problems) >= limit:
+            break
+    return problems
+
+
+def _log_nonfinite_state(logger, epoch, iteration, img_path, target, items, grad_problems=None, prefix="Non-finite training state"):
+    problems = _find_nonfinite_tensors(items)
+    if not problems and not grad_problems:
+        return
+
+    logger.error("{} at epoch {} iteration {}".format(prefix, epoch, iteration + 1))
+    if img_path:
+        logger.error("Batch sample image: {}".format(img_path[0]))
+    if target is not None and torch.is_tensor(target) and target.numel() > 0:
+        target_cpu = target.detach().cpu()
+        logger.error(
+            "Target stats: min={} max={} unique={}".format(
+                int(target_cpu.min().item()),
+                int(target_cpu.max().item()),
+                int(target_cpu.unique().numel()),
+            )
+        )
+
+    for name, stats in problems[:20]:
+        logger.error(
+            "Tensor {} shape={} dtype={} nan={} inf={} max_abs={:.6g}".format(
+                name,
+                stats["shape"],
+                stats["dtype"],
+                stats["nan"],
+                stats["inf"],
+                stats["max_abs"],
+            )
+        )
+
+    for name, stats in (grad_problems or [])[:10]:
+        logger.error(
+            "Grad {} shape={} dtype={} nan={} inf={} max_abs={:.6g}".format(
+                name,
+                stats["shape"],
+                stats["dtype"],
+                stats["nan"],
+                stats["inf"],
+                stats["max_abs"],
+            )
+        )
+
+
 def part_attention_vit_do_train_with_amp(cfg,
              model,
              train_loader,
@@ -58,12 +162,15 @@ def part_attention_vit_do_train_with_amp(cfg,
     log_period = cfg.SOLVER.LOG_PERIOD
     checkpoint_period = cfg.SOLVER.CHECKPOINT_PERIOD
     eval_period = cfg.SOLVER.EVAL_PERIOD
+    grad_clip_enabled = bool(getattr(cfg.SOLVER, "GRAD_CLIP_ENABLED", False))
+    grad_clip_norm = float(getattr(cfg.SOLVER, "GRAD_CLIP_NORM", 0.0))
 
     device = "cuda"
     epochs = cfg.SOLVER.MAX_EPOCHS
 
     logger = logging.getLogger("PAT.train")
     logger.info('start training')
+    logger.info("Gradient clipping: enabled={} max_norm={:.3f}".format(grad_clip_enabled, grad_clip_norm))
     log_path = os.path.join(cfg.LOG_ROOT, cfg.LOG_NAME)
     best_checkpoint_path = os.path.join(log_path, cfg.MODEL.NAME + '_best.pth')
     tb_path = os.path.join(cfg.TB_LOG_ROOT, cfg.LOG_NAME)
@@ -111,6 +218,7 @@ def part_attention_vit_do_train_with_amp(cfg,
     last_checkpoint_epoch = None
     val_name = resolve_eval_dataset_name(cfg)
     secondary_val_names = _test_names(cfg)[1:]
+    nonfinite_reported = False
     for epoch in range(1, epochs + 1):
         start_time = time.time()
         total_loss_meter.reset()
@@ -139,6 +247,7 @@ def part_attention_vit_do_train_with_amp(cfg,
             use_class_aware = model_is_class_aware(model)
             class_logits = None
             class_loss = None
+            part_feat = None
 
             model.to(device)
             with amp.autocast(enabled=True):
@@ -153,6 +262,7 @@ def part_attention_vit_do_train_with_amp(cfg,
                 if cfg.MODEL.PC_LOSS:
                     feat = torch.stack(layerwise_feat_list[-1], dim=0)
                     feat = feat[:,::1,:]
+                    part_feat = feat
                     '''
                     loss1: clustering loss(for patch centers)
                     '''
@@ -171,7 +281,75 @@ def part_attention_vit_do_train_with_amp(cfg,
                 if class_loss is not None:
                     total_loss = total_loss + get_class_loss_weight(cfg) * class_loss
 
+            loss_components = dict(getattr(loss_fn, "last_components", {}))
+            monitored_items = [
+                ("score", score),
+                ("global_feat", layerwise_global_feat[-1]),
+                ("part_feat", part_feat),
+                ("patch_agent", patch_agent),
+                ("id_loss", loss_components.get("id_loss")),
+                ("tri_loss", loss_components.get("tri_loss")),
+                ("center_loss", loss_components.get("center_loss")),
+                ("reid_loss", reid_loss),
+                ("pc_loss", ploss),
+                ("class_loss", class_loss),
+                ("total_loss", total_loss),
+            ]
+            if _find_nonfinite_tensors(monitored_items):
+                if not nonfinite_reported:
+                    _log_nonfinite_state(
+                        logger,
+                        epoch,
+                        n_iter,
+                        img_path,
+                        target,
+                        monitored_items,
+                        prefix="Non-finite forward/loss tensors detected",
+                    )
+                    nonfinite_reported = True
+                logger.warning(
+                    "Skipping optimizer step at epoch {} iteration {} because forward/loss tensors are non-finite.".format(
+                        epoch, n_iter + 1
+                    )
+                )
+                optimizer.zero_grad(set_to_none=True)
+                continue
+
             scaler.scale(total_loss).backward()
+            scaler.unscale_(optimizer)
+
+            grad_norm = None
+            if grad_clip_enabled and grad_clip_norm > 0:
+                grad_norm = nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
+
+            grad_norm_value = None
+            if grad_norm is not None:
+                grad_norm_value = float(grad_norm.item()) if torch.is_tensor(grad_norm) else float(grad_norm)
+
+            grad_problems = _find_nonfinite_grads(model)
+            if grad_problems or (grad_norm_value is not None and not math.isfinite(grad_norm_value)):
+                if not nonfinite_reported:
+                    if grad_norm_value is not None and not math.isfinite(grad_norm_value):
+                        logger.error("Gradient norm is non-finite: {}".format(grad_norm_value))
+                    _log_nonfinite_state(
+                        logger,
+                        epoch,
+                        n_iter,
+                        img_path,
+                        target,
+                        monitored_items,
+                        grad_problems=grad_problems,
+                        prefix="Non-finite gradients detected",
+                    )
+                    nonfinite_reported = True
+                logger.warning(
+                    "Skipping optimizer step at epoch {} iteration {} because gradients are non-finite.".format(
+                        epoch, n_iter + 1
+                    )
+                )
+                optimizer.zero_grad(set_to_none=True)
+                scaler.update()
+                continue
 
             scaler.step(optimizer)
             scaler.update()
