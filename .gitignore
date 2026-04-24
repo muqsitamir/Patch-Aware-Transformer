@@ -41,3 +41,4 @@ venv/
 .vscode/
 .idea/
 logs/
+models/
