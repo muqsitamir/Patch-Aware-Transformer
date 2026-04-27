@@ -294,7 +294,13 @@ if __name__ == "__main__":
         # directly. After that, argsort preserves the final re-ranked order.
         postprocess_mode = "off"
 
-    re_rank_dist = re_ranking(q_g_dist, q_q_dist, g_g_dist, q_g_penalty=penalty_matrix)
+    if cfg.TEST.RE_RANKING:
+        re_rank_dist = re_ranking(q_g_dist, q_q_dist, g_g_dist, q_g_penalty=penalty_matrix)
+    else:
+        # features are already L2-normalized; cosine distance = 1 - q.g^T
+        re_rank_dist = 1.0 - q_g_dist
+        if penalty_matrix is not None:
+            re_rank_dist = re_rank_dist + penalty_matrix
     if group_rerank_mode(cfg) != "none":
         base_group_dist = np.asarray(re_rank_dist, dtype=np.float32).copy()
         combined_pred_classes = None

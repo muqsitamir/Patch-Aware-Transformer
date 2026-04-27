@@ -101,6 +101,49 @@ def eval_func(distmat, q_pids, g_pids, q_camids, g_camids, max_rank=50):
     return all_cmc, mAP
 
 
+def per_class_map(distmat, q_pids, g_pids, q_camids, g_camids, q_classes, g_classes):
+    """
+    Compute mAP and Rank-1 per semantic class.
+
+    For each class C, restricts evaluation to queries and gallery items
+    belonging to C (same-class sub-block of distmat). Returns a dict:
+        class_label -> {'mAP': float, 'r1': float, 'n_queries': int}
+    Classes where no valid query-gallery pid match exists are reported as nan.
+    """
+    q_classes = np.asarray(q_classes)
+    g_classes = np.asarray(g_classes)
+    q_pids = np.asarray(q_pids)
+    g_pids = np.asarray(g_pids)
+    q_camids = np.asarray(q_camids)
+    g_camids = np.asarray(g_camids)
+
+    results = {}
+    for cls in sorted(np.unique(q_classes).tolist()):
+        q_mask = np.where(q_classes == cls)[0]
+        g_mask = np.where(g_classes == cls)[0]
+        if len(q_mask) == 0 or len(g_mask) == 0:
+            continue
+        sub_dist = distmat[np.ix_(q_mask, g_mask)]
+        try:
+            cmc, map_val = eval_func(
+                sub_dist,
+                q_pids[q_mask], g_pids[g_mask],
+                q_camids[q_mask], g_camids[g_mask],
+            )
+            results[cls] = {
+                'mAP': float(map_val),
+                'r1': float(cmc[0]),
+                'n_queries': int(len(q_mask)),
+            }
+        except AssertionError:
+            results[cls] = {
+                'mAP': float('nan'),
+                'r1': float('nan'),
+                'n_queries': int(len(q_mask)),
+            }
+    return results
+
+
 class R1_mAP_eval():
     def __init__(
         self,

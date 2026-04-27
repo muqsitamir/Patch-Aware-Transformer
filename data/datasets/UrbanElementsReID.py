@@ -6,6 +6,7 @@
 
 import glob
 import csv
+import logging
 import re
 import torch
 import xml.dom.minidom as XD
@@ -100,9 +101,12 @@ class UrbanElementsReID(ImageDataset):
         return read_class_csv(osp.join(self.dataset_dir, csv_name))
     
     def _process_dir(self, dir_path, relabel=False):
-        xml_dir = osp.join(self.dataset_dir, 'train.csv')
+        filt_path = osp.join(self.dataset_dir, 'train_filtered.csv')
+        xml_dir = filt_path if osp.exists(filt_path) else osp.join(self.dataset_dir, 'train.csv')
+        default_classes = 'train_classes_filtered.csv' if xml_dir.endswith('train_filtered.csv') else 'train_classes.csv'
+        class_csv = self._class_cfg_value('TRAIN_CSV', default_classes)
+        logging.getLogger('PAT').info("UrbanElementsReID: loading train CSV: %s  classes CSV: %s", xml_dir, class_csv)
         xml_file = self._readCSV_(xml_dir)
-        class_csv = self._class_cfg_value('TRAIN_CSV', 'train_classes.csv')
         image_to_class = self._read_class_map(class_csv)
 
         pid_container = set()

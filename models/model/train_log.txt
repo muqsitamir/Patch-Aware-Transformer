@@ -1,11 +1,10 @@
-2026-03-25 14:11:42,184 PAT INFO: Saving model in the path :models/./model
-2026-03-25 14:11:42,184 PAT INFO: Namespace(config_file='config/UrbanElementsReID_train.yml', opts=[], local_rank=0)
-2026-03-25 14:11:42,184 PAT INFO: Loaded configuration file config/UrbanElementsReID_train.yml
-2026-03-25 14:11:42,184 PAT INFO: 
+2026-04-26 16:47:31,920 PAT INFO: Saving model in the path :models/./model
+2026-04-26 16:47:31,921 PAT INFO: Namespace(config_file='config/UrbanElementsReID_train.yml', opts=[], local_rank=0)
+2026-04-26 16:47:31,921 PAT INFO: Loaded configuration file config/UrbanElementsReID_train.yml
+2026-04-26 16:47:31,921 PAT INFO: 
 MODEL:
-  PRETRAIN_CHOICE: 'imagenet'
-  #PRETRAIN_PATH: "../../.cache/torch/hub/checkpoints" # root of pretrain path
-  PRETRAIN_PATH: "/home/muqsitamir/models/" 
+  PRETRAIN_CHOICE: 'finetune'
+  PRETRAIN_PATH: 'C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\part_attention_vit_60.pth'
   IF_LABELSMOOTH: 'on'
   IF_WITH_CENTER: 'no'
   NAME: 'part_attention_vit'
@@ -13,6 +12,15 @@ MODEL:
   DEVICE_ID: ('0')
   TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
   STRIDE_SIZE: [16, 16]
+  CLASS_AWARE:
+    ENABLED: False
+    NUM_CLASSES: 0
+    LOSS_WEIGHT: 1.0
+    DISTANCE_PENALTY: 0.3
+    TRAIN_CSV: "train_classes_filtered.csv"
+    QUERY_CSV: "query_classes.csv"
+    TEST_CSV: "test_classes.csv"
+    RETRIEVAL_SOURCE: "predicted"
 
 INPUT:
   SIZE_TRAIN: [256,128]
@@ -21,25 +29,31 @@ INPUT:
     ENABLED: False
   PIXEL_MEAN: [0.5, 0.5, 0.5]
   PIXEL_STD: [0.5, 0.5, 0.5]
+  CJ:
+    ENABLED: True
+    PROB: 0.5
+    HUE: 0.02
   LGT: # Local Grayscale Transfomation
-    DO_LGT: True
+    DO_LGT: False
     PROB: 0.5
 
 DATASETS:
   TRAIN: ('UrbanElementsReID',)
   TEST: ('UrbanElementsReID',)
   #ROOT_DIR: ('../../data') # root of datasets
-  ROOT_DIR: '/home/muqsitamir/datasets/Urban2026/'
+  ROOT_DIR: 'C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026'
 
 DATALOADER:
   SAMPLER: 'softmax_triplet'
   NUM_INSTANCE: 4
-  NUM_WORKERS: 8
+  NUM_WORKERS: 0
 
 SOLVER:
   OPTIMIZER_NAME: 'SGD'
-  MAX_EPOCHS: 60
+  MAX_EPOCHS: 2
   BASE_LR: 0.001 # 0.0004 for msmt
+  GRAD_CLIP_ENABLED: True
+  GRAD_CLIP_NORM: 1.0
   IMS_PER_BATCH: 64
   WARMUP_METHOD: 'linear'
   LARGE_FC_LR: False
@@ -53,7 +67,7 @@ SOLVER:
 
 TEST:
   EVAL: True
-  IMS_PER_BATCH: 128
+  IMS_PER_BATCH: 64
   RE_RANKING: False
   WEIGHT: ''
   NECK_FEAT: 'before'
@@ -63,28 +77,31 @@ LOG_ROOT: 'models/' # root of log file
 TB_LOG_ROOT: './tb_log/'
 LOG_NAME: './model'
 
-2026-03-25 14:11:42,184 PAT INFO: Running with config:
+2026-04-26 16:47:31,921 PAT INFO: Running with config:
 DATALOADER:
   CAMERA_TO_DOMAIN: False
   DELETE_REM: False
   DROP_LAST: False
   INDIVIDUAL: False
+  MIXED_EXTERNAL_RATIO: 0.2
   NAIVE_WAY: True
   NUM_INSTANCE: 4
-  NUM_WORKERS: 8
+  NUM_WORKERS: 0
   SAMPLER: softmax_triplet
 DATASETS:
   COMBINEALL: False
-  ROOT_DIR: /home/muqsitamir/datasets/Urban2026/
+  EXTERNAL_ROOT: 
+  MODE: challenge_only
+  ROOT_DIR: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026
   TEST: ('UrbanElementsReID',)
   TRAIN: ('UrbanElementsReID',)
 INPUT:
   CJ:
     BRIGHTNESS: 0.15
     CONTRAST: 0.15
-    ENABLED: False
-    HUE: 0.1
-    PROB: 1.0
+    ENABLED: True
+    HUE: 0.02
+    PROB: 0.5
     SATURATION: 0.1
   DO_AUGMIX: False
   DO_AUTOAUG: False
@@ -92,7 +109,7 @@ INPUT:
   DO_PAD: True
   FLIP_PROB: 0.5
   LGT:
-    DO_LGT: True
+    DO_LGT: False
     PROB: 0.5
   PADDING: 10
   PADDING_MODE: constant
@@ -111,6 +128,15 @@ LOG_NAME: ./model
 LOG_ROOT: models/
 MODEL:
   ATT_DROP_RATE: 0.0
+  CLASS_AWARE:
+    DISTANCE_PENALTY: 0.3
+    ENABLED: False
+    LOSS_WEIGHT: 1.0
+    NUM_CLASSES: 0
+    QUERY_CSV: query_classes.csv
+    RETRIEVAL_SOURCE: predicted
+    TEST_CSV: test_classes.csv
+    TRAIN_CSV: train_classes_filtered.csv
   CLUSTER_K: 10
   COS_LAYER: False
   DEVICE: cuda
@@ -118,6 +144,7 @@ MODEL:
   DIST_TRAIN: False
   DROP_OUT: 0.0
   DROP_PATH: 0.1
+  FINETUNE_PATH: 
   FREEZE_PATCH_EMBED: True
   ID_LOSS_TYPE: softmax
   ID_LOSS_WEIGHT: 1.0
@@ -132,8 +159,8 @@ MODEL:
   PC_LOSS: True
   PC_LR: 1.0
   PC_SCALE: 0.02
-  PRETRAIN_CHOICE: imagenet
-  PRETRAIN_PATH: /home/muqsitamir/models/
+  PRETRAIN_CHOICE: finetune
+  PRETRAIN_PATH: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\part_attention_vit_60.pth
   SOFT_LABEL: True
   SOFT_LAMBDA: 0.5
   SOFT_WEIGHT: 0.5
@@ -148,13 +175,16 @@ SOLVER:
   CHECKPOINT_PERIOD: 5
   COSINE_MARGIN: 0.5
   COSINE_SCALE: 30
+  DELETE_OLD_CHECKPOINTS: False
   EVAL_PERIOD: 1
   GAMMA: 0.1
+  GRAD_CLIP_ENABLED: True
+  GRAD_CLIP_NORM: 1.0
   IMS_PER_BATCH: 64
   LARGE_FC_LR: False
   LOG_PERIOD: 60
   MARGIN: 0.3
-  MAX_EPOCHS: 60
+  MAX_EPOCHS: 2
   MOMENTUM: 0.9
   OPTIMIZER_NAME: SGD
   SEED: 1234
@@ -166,652 +196,144 @@ SOLVER:
   WEIGHT_DECAY_BIAS: 0.0001
 TB_LOG_ROOT: ./tb_log/
 TEST:
+  CLASS_GROUPS: []
+  CLASS_GROUP_FILE: 
+  CLASS_MISMATCH_PENALTY: 0.0
+  CLASS_POSTPROCESS: off
+  CLASS_SCALE: 1.2
+  CLASS_SCORE_MODE: additive
+  CLASS_TOPK: 100
   DIST_MAT: dist_mat.npy
   EVAL: True
+  FEAT_G_PATH: ./gf.npy
   FEAT_NORM: True
-  IMS_PER_BATCH: 128
+  FEAT_Q_PATH: ./qf.npy
+  GALLERY_GROUP_CSV: 
+  GROUP_BONUS_MODE: hard
+  GROUP_CLASS_SOURCE: auto
+  GROUP_RERANK_LAMBDA: 0.2
+  IMS_PER_BATCH: 64
+  LOG_RANK_CHANGES: 5
+  METRICS_PATH: 
   NECK_FEAT: before
+  QE_ALPHA: 1.0
+  QE_TOPK: 5
+  QUERY_EXPANSION: False
+  QUERY_GROUP_CSV: 
+  RERANK_MODE: none
   RE_RANKING: False
+  SAVE_FEATURES: True
+  SKIP_EVAL_IF_DUMMY_IDS: True
+  TTA_ENABLED: False
+  TTA_FLIP: True
+  TTA_MERGE: mean
+  TTA_SCALES: [1.0]
   WEIGHT: 
-2026-03-25 14:11:42,271 PAT INFO: => Loaded UrbanElementsReID
-2026-03-25 14:11:42,272 PAT INFO:   ----------------------------------------
-2026-03-25 14:11:42,272 PAT INFO:   subset   | # ids | # images | # cameras
-2026-03-25 14:11:42,272 PAT INFO:   ----------------------------------------
-2026-03-25 14:11:42,272 PAT INFO:   train    |  1088 |    11175 |         3
-2026-03-25 14:11:42,272 PAT INFO:   ----------------------------------------
-2026-03-25 14:11:42,432 PAT INFO: => Loaded UrbanElementsReID
-2026-03-25 14:11:42,432 PAT INFO:   ----------------------------------------
-2026-03-25 14:11:42,432 PAT INFO:   subset   | # ids | # images | # cameras
-2026-03-25 14:11:42,433 PAT INFO:   ----------------------------------------
-2026-03-25 14:11:42,433 PAT INFO:   query    |  1088 |    11175 |         3
-2026-03-25 14:11:42,433 PAT INFO:   gallery  |  1088 |    11175 |         3
-2026-03-25 14:11:42,433 PAT INFO:   ----------------------------------------
-2026-03-25 14:11:44,303 PAT.train INFO: Number of parameter: 87.36M
-2026-03-25 14:11:44,553 PAT.train INFO: start training
-2026-03-25 14:12:42,148 PAT.train INFO: Epoch[1] Iteration[60/159] total_loss: 11.621, reid_loss: 10.032, pc_loss: 1.589, Acc: 0.004, Base Lr: 2.08e-04
-2026-03-25 14:13:01,010 PAT.train INFO: Epoch[1] Iteration[120/159] total_loss: 11.275, reid_loss: 9.720, pc_loss: 1.554, Acc: 0.009, Base Lr: 2.08e-04
-2026-03-25 14:13:12,381 PAT.train INFO: Epoch 1 done. Time per batch: 0.330[s] Speed: 194.0[samples/s]
-2026-03-25 14:13:12,381 PAT.test INFO: Enter inferencing
-2026-03-25 14:14:21,547 PAT.test INFO: Validation Results 
-2026-03-25 14:14:21,548 PAT.test INFO: mAP: 21.7%
-2026-03-25 14:14:21,548 PAT.test INFO: CMC curve, Rank-1  :41.5%
-2026-03-25 14:14:21,548 PAT.test INFO: CMC curve, Rank-5  :63.8%
-2026-03-25 14:14:21,548 PAT.test INFO: CMC curve, Rank-10 :72.9%
-2026-03-25 14:14:21,548 PAT.test INFO: total inference time: 69.16
-2026-03-25 14:14:43,342 PAT.train INFO: Epoch[2] Iteration[60/159] total_loss: 9.789, reid_loss: 8.719, pc_loss: 1.070, Acc: 0.053, Base Lr: 4.06e-04
-2026-03-25 14:15:02,798 PAT.train INFO: Epoch[2] Iteration[120/159] total_loss: 10.050, reid_loss: 8.645, pc_loss: 1.405, Acc: 0.074, Base Lr: 4.06e-04
-2026-03-25 14:15:14,393 PAT.train INFO: Epoch 2 done. Time per batch: 0.337[s] Speed: 190.2[samples/s]
-2026-03-25 14:15:14,394 PAT.test INFO: Enter inferencing
-2026-03-25 14:17:21,417 PAT.test INFO: Validation Results 
-2026-03-25 14:17:21,418 PAT.test INFO: mAP: 24.5%
-2026-03-25 14:17:21,418 PAT.test INFO: CMC curve, Rank-1  :44.2%
-2026-03-25 14:17:21,418 PAT.test INFO: CMC curve, Rank-5  :67.3%
-2026-03-25 14:17:21,418 PAT.test INFO: CMC curve, Rank-10 :76.6%
-2026-03-25 14:17:21,418 PAT.test INFO: total inference time: 127.02
-2026-03-25 14:17:45,606 PAT.train INFO: Epoch[3] Iteration[60/159] total_loss: 10.127, reid_loss: 8.154, pc_loss: 1.973, Acc: 0.103, Base Lr: 6.04e-04
-2026-03-25 14:18:07,661 PAT.train INFO: Epoch[3] Iteration[120/159] total_loss: 10.018, reid_loss: 8.180, pc_loss: 1.837, Acc: 0.118, Base Lr: 6.04e-04
-2026-03-25 14:18:21,745 PAT.train INFO: Epoch 3 done. Time per batch: 0.384[s] Speed: 166.7[samples/s]
-2026-03-25 14:18:21,745 PAT.test INFO: Enter inferencing
-2026-03-25 14:20:38,964 PAT.test INFO: Validation Results 
-2026-03-25 14:20:38,965 PAT.test INFO: mAP: 29.4%
-2026-03-25 14:20:38,965 PAT.test INFO: CMC curve, Rank-1  :51.6%
-2026-03-25 14:20:38,965 PAT.test INFO: CMC curve, Rank-5  :73.3%
-2026-03-25 14:20:38,965 PAT.test INFO: CMC curve, Rank-10 :81.8%
-2026-03-25 14:20:38,965 PAT.test INFO: total inference time: 137.22
-2026-03-25 14:21:03,533 PAT.train INFO: Epoch[4] Iteration[60/159] total_loss: 9.239, reid_loss: 7.914, pc_loss: 1.325, Acc: 0.110, Base Lr: 8.02e-04
-2026-03-25 14:21:24,914 PAT.train INFO: Epoch[4] Iteration[120/159] total_loss: 8.990, reid_loss: 7.885, pc_loss: 1.105, Acc: 0.137, Base Lr: 8.02e-04
-2026-03-25 14:21:39,861 PAT.train INFO: Epoch 4 done. Time per batch: 0.390[s] Speed: 164.1[samples/s]
-2026-03-25 14:21:39,861 PAT.test INFO: Enter inferencing
-2026-03-25 14:23:57,079 PAT.test INFO: Validation Results 
-2026-03-25 14:23:57,080 PAT.test INFO: mAP: 32.6%
-2026-03-25 14:23:57,080 PAT.test INFO: CMC curve, Rank-1  :54.4%
-2026-03-25 14:23:57,080 PAT.test INFO: CMC curve, Rank-5  :76.2%
-2026-03-25 14:23:57,080 PAT.test INFO: CMC curve, Rank-10 :84.1%
-2026-03-25 14:23:57,080 PAT.test INFO: total inference time: 137.22
-2026-03-25 14:24:21,837 PAT.train INFO: Epoch[5] Iteration[60/159] total_loss: 7.939, reid_loss: 7.468, pc_loss: 0.472, Acc: 0.133, Base Lr: 9.96e-04
-2026-03-25 14:24:44,565 PAT.train INFO: Epoch[5] Iteration[120/159] total_loss: 7.849, reid_loss: 7.383, pc_loss: 0.466, Acc: 0.137, Base Lr: 9.96e-04
-2026-03-25 14:24:59,089 PAT.train INFO: Epoch 5 done. Time per batch: 0.395[s] Speed: 162.1[samples/s]
-2026-03-25 14:24:59,089 PAT.test INFO: Enter inferencing
-2026-03-25 14:27:17,976 PAT.test INFO: Validation Results 
-2026-03-25 14:27:17,976 PAT.test INFO: mAP: 34.7%
-2026-03-25 14:27:17,976 PAT.test INFO: CMC curve, Rank-1  :56.5%
-2026-03-25 14:27:17,976 PAT.test INFO: CMC curve, Rank-5  :78.1%
-2026-03-25 14:27:17,976 PAT.test INFO: CMC curve, Rank-10 :85.3%
-2026-03-25 14:27:17,976 PAT.test INFO: total inference time: 138.88
-2026-03-25 14:27:17,985 PAT.train INFO: =====best epoch: 5=====
-2026-03-25 14:27:42,670 PAT.train INFO: Epoch[6] Iteration[60/159] total_loss: 7.250, reid_loss: 6.843, pc_loss: 0.407, Acc: 0.115, Base Lr: 9.94e-04
-2026-03-25 14:28:05,827 PAT.train INFO: Epoch[6] Iteration[120/159] total_loss: 7.182, reid_loss: 6.759, pc_loss: 0.424, Acc: 0.153, Base Lr: 9.94e-04
-2026-03-25 14:28:19,834 PAT.train INFO: Epoch 6 done. Time per batch: 0.391[s] Speed: 163.5[samples/s]
-2026-03-25 14:28:19,834 PAT.test INFO: Enter inferencing
-2026-03-25 14:30:40,903 PAT.test INFO: Validation Results 
-2026-03-25 14:30:40,904 PAT.test INFO: mAP: 36.2%
-2026-03-25 14:30:40,904 PAT.test INFO: CMC curve, Rank-1  :58.1%
-2026-03-25 14:30:40,904 PAT.test INFO: CMC curve, Rank-5  :78.7%
-2026-03-25 14:30:40,904 PAT.test INFO: CMC curve, Rank-10 :86.0%
-2026-03-25 14:30:40,904 PAT.test INFO: total inference time: 141.07
-2026-03-25 14:31:05,865 PAT.train INFO: Epoch[7] Iteration[60/159] total_loss: 6.994, reid_loss: 6.533, pc_loss: 0.461, Acc: 0.120, Base Lr: 9.92e-04
-2026-03-25 14:31:27,941 PAT.train INFO: Epoch[7] Iteration[120/159] total_loss: 6.771, reid_loss: 6.331, pc_loss: 0.440, Acc: 0.156, Base Lr: 9.92e-04
-2026-03-25 14:31:42,037 PAT.train INFO: Epoch 7 done. Time per batch: 0.392[s] Speed: 163.4[samples/s]
-2026-03-25 14:31:42,037 PAT.test INFO: Enter inferencing
-2026-03-25 14:33:57,376 PAT.test INFO: Validation Results 
-2026-03-25 14:33:57,376 PAT.test INFO: mAP: 37.3%
-2026-03-25 14:33:57,376 PAT.test INFO: CMC curve, Rank-1  :59.1%
-2026-03-25 14:33:57,377 PAT.test INFO: CMC curve, Rank-5  :79.5%
-2026-03-25 14:33:57,377 PAT.test INFO: CMC curve, Rank-10 :86.8%
-2026-03-25 14:33:57,377 PAT.test INFO: total inference time: 135.34
-2026-03-25 14:34:22,085 PAT.train INFO: Epoch[8] Iteration[60/159] total_loss: 6.492, reid_loss: 6.104, pc_loss: 0.389, Acc: 0.152, Base Lr: 9.89e-04
-2026-03-25 14:34:45,207 PAT.train INFO: Epoch[8] Iteration[120/159] total_loss: 6.315, reid_loss: 5.868, pc_loss: 0.447, Acc: 0.200, Base Lr: 9.89e-04
-2026-03-25 14:34:58,450 PAT.train INFO: Epoch 8 done. Time per batch: 0.389[s] Speed: 164.6[samples/s]
-2026-03-25 14:34:58,450 PAT.test INFO: Enter inferencing
-2026-03-25 14:37:08,152 PAT.test INFO: Validation Results 
-2026-03-25 14:37:08,153 PAT.test INFO: mAP: 38.2%
-2026-03-25 14:37:08,153 PAT.test INFO: CMC curve, Rank-1  :59.8%
-2026-03-25 14:37:08,153 PAT.test INFO: CMC curve, Rank-5  :80.3%
-2026-03-25 14:37:08,153 PAT.test INFO: CMC curve, Rank-10 :87.1%
-2026-03-25 14:37:08,153 PAT.test INFO: total inference time: 129.70
-2026-03-25 14:37:32,135 PAT.train INFO: Epoch[9] Iteration[60/159] total_loss: 6.317, reid_loss: 5.813, pc_loss: 0.504, Acc: 0.164, Base Lr: 9.86e-04
-2026-03-25 14:37:54,024 PAT.train INFO: Epoch[9] Iteration[120/159] total_loss: 6.121, reid_loss: 5.592, pc_loss: 0.529, Acc: 0.223, Base Lr: 9.86e-04
-2026-03-25 14:38:06,972 PAT.train INFO: Epoch 9 done. Time per batch: 0.374[s] Speed: 170.9[samples/s]
-2026-03-25 14:38:06,973 PAT.test INFO: Enter inferencing
-2026-03-25 14:40:22,368 PAT.test INFO: Validation Results 
-2026-03-25 14:40:22,369 PAT.test INFO: mAP: 39.1%
-2026-03-25 14:40:22,369 PAT.test INFO: CMC curve, Rank-1  :60.5%
-2026-03-25 14:40:22,369 PAT.test INFO: CMC curve, Rank-5  :80.5%
-2026-03-25 14:40:22,369 PAT.test INFO: CMC curve, Rank-10 :87.6%
-2026-03-25 14:40:22,369 PAT.test INFO: total inference time: 135.39
-2026-03-25 14:40:46,749 PAT.train INFO: Epoch[10] Iteration[60/159] total_loss: 6.127, reid_loss: 5.674, pc_loss: 0.453, Acc: 0.212, Base Lr: 9.83e-04
-2026-03-25 14:41:09,248 PAT.train INFO: Epoch[10] Iteration[120/159] total_loss: 5.883, reid_loss: 5.402, pc_loss: 0.481, Acc: 0.255, Base Lr: 9.83e-04
-2026-03-25 14:41:23,135 PAT.train INFO: Epoch 10 done. Time per batch: 0.387[s] Speed: 165.4[samples/s]
-2026-03-25 14:41:23,135 PAT.test INFO: Enter inferencing
-2026-03-25 14:43:42,617 PAT.test INFO: Validation Results 
-2026-03-25 14:43:42,617 PAT.test INFO: mAP: 39.8%
-2026-03-25 14:43:42,617 PAT.test INFO: CMC curve, Rank-1  :61.0%
-2026-03-25 14:43:42,618 PAT.test INFO: CMC curve, Rank-5  :81.0%
-2026-03-25 14:43:42,618 PAT.test INFO: CMC curve, Rank-10 :87.9%
-2026-03-25 14:43:42,618 PAT.test INFO: total inference time: 139.48
-2026-03-25 14:43:42,626 PAT.train INFO: =====best epoch: 10=====
-2026-03-25 14:44:07,937 PAT.train INFO: Epoch[11] Iteration[60/159] total_loss: 5.577, reid_loss: 5.379, pc_loss: 0.197, Acc: 0.259, Base Lr: 9.79e-04
-2026-03-25 14:44:30,876 PAT.train INFO: Epoch[11] Iteration[120/159] total_loss: 5.386, reid_loss: 5.117, pc_loss: 0.269, Acc: 0.305, Base Lr: 9.79e-04
-2026-03-25 14:44:44,865 PAT.train INFO: Epoch 11 done. Time per batch: 0.394[s] Speed: 162.2[samples/s]
-2026-03-25 14:44:44,865 PAT.test INFO: Enter inferencing
-2026-03-25 14:47:05,660 PAT.test INFO: Validation Results 
-2026-03-25 14:47:05,661 PAT.test INFO: mAP: 40.6%
-2026-03-25 14:47:05,661 PAT.test INFO: CMC curve, Rank-1  :61.6%
-2026-03-25 14:47:05,661 PAT.test INFO: CMC curve, Rank-5  :81.7%
-2026-03-25 14:47:05,661 PAT.test INFO: CMC curve, Rank-10 :88.5%
-2026-03-25 14:47:05,661 PAT.test INFO: total inference time: 140.79
-2026-03-25 14:47:30,412 PAT.train INFO: Epoch[12] Iteration[60/159] total_loss: 5.236, reid_loss: 5.104, pc_loss: 0.133, Acc: 0.264, Base Lr: 9.76e-04
-2026-03-25 14:47:53,874 PAT.train INFO: Epoch[12] Iteration[120/159] total_loss: 5.019, reid_loss: 4.841, pc_loss: 0.177, Acc: 0.330, Base Lr: 9.76e-04
-2026-03-25 14:48:07,029 PAT.train INFO: Epoch 12 done. Time per batch: 0.391[s] Speed: 163.8[samples/s]
-2026-03-25 14:48:07,029 PAT.test INFO: Enter inferencing
-2026-03-25 14:50:27,204 PAT.test INFO: Validation Results 
-2026-03-25 14:50:27,205 PAT.test INFO: mAP: 41.3%
-2026-03-25 14:50:27,205 PAT.test INFO: CMC curve, Rank-1  :62.1%
-2026-03-25 14:50:27,205 PAT.test INFO: CMC curve, Rank-5  :82.0%
-2026-03-25 14:50:27,205 PAT.test INFO: CMC curve, Rank-10 :88.6%
-2026-03-25 14:50:27,205 PAT.test INFO: total inference time: 140.17
-2026-03-25 14:50:51,975 PAT.train INFO: Epoch[13] Iteration[60/159] total_loss: 4.909, reid_loss: 4.840, pc_loss: 0.069, Acc: 0.305, Base Lr: 9.71e-04
-2026-03-25 14:51:13,917 PAT.train INFO: Epoch[13] Iteration[120/159] total_loss: 4.762, reid_loss: 4.619, pc_loss: 0.142, Acc: 0.377, Base Lr: 9.71e-04
-2026-03-25 14:51:27,868 PAT.train INFO: Epoch 13 done. Time per batch: 0.389[s] Speed: 164.7[samples/s]
-2026-03-25 14:51:27,868 PAT.test INFO: Enter inferencing
-2026-03-25 14:53:47,954 PAT.test INFO: Validation Results 
-2026-03-25 14:53:47,954 PAT.test INFO: mAP: 42.1%
-2026-03-25 14:53:47,954 PAT.test INFO: CMC curve, Rank-1  :62.9%
-2026-03-25 14:53:47,954 PAT.test INFO: CMC curve, Rank-5  :82.6%
-2026-03-25 14:53:47,954 PAT.test INFO: CMC curve, Rank-10 :89.0%
-2026-03-25 14:53:47,955 PAT.test INFO: total inference time: 140.08
-2026-03-25 14:54:12,393 PAT.train INFO: Epoch[14] Iteration[60/159] total_loss: 4.775, reid_loss: 4.683, pc_loss: 0.092, Acc: 0.340, Base Lr: 9.67e-04
-2026-03-25 14:54:35,366 PAT.train INFO: Epoch[14] Iteration[120/159] total_loss: 4.612, reid_loss: 4.415, pc_loss: 0.197, Acc: 0.416, Base Lr: 9.67e-04
-2026-03-25 14:54:48,928 PAT.train INFO: Epoch 14 done. Time per batch: 0.388[s] Speed: 164.9[samples/s]
-2026-03-25 14:54:48,928 PAT.test INFO: Enter inferencing
-2026-03-25 14:57:10,324 PAT.test INFO: Validation Results 
-2026-03-25 14:57:10,325 PAT.test INFO: mAP: 42.5%
-2026-03-25 14:57:10,325 PAT.test INFO: CMC curve, Rank-1  :63.0%
-2026-03-25 14:57:10,325 PAT.test INFO: CMC curve, Rank-5  :82.9%
-2026-03-25 14:57:10,325 PAT.test INFO: CMC curve, Rank-10 :89.2%
-2026-03-25 14:57:10,325 PAT.test INFO: total inference time: 141.39
-2026-03-25 14:57:36,019 PAT.train INFO: Epoch[15] Iteration[60/159] total_loss: 4.652, reid_loss: 4.508, pc_loss: 0.144, Acc: 0.370, Base Lr: 9.62e-04
-2026-03-25 14:57:58,728 PAT.train INFO: Epoch[15] Iteration[120/159] total_loss: 4.520, reid_loss: 4.263, pc_loss: 0.257, Acc: 0.437, Base Lr: 9.62e-04
-2026-03-25 14:58:12,514 PAT.train INFO: Epoch 15 done. Time per batch: 0.396[s] Speed: 161.7[samples/s]
-2026-03-25 14:58:12,514 PAT.test INFO: Enter inferencing
-2026-03-25 15:00:28,561 PAT.test INFO: Validation Results 
-2026-03-25 15:00:28,562 PAT.test INFO: mAP: 43.3%
-2026-03-25 15:00:28,562 PAT.test INFO: CMC curve, Rank-1  :63.2%
-2026-03-25 15:00:28,562 PAT.test INFO: CMC curve, Rank-5  :83.1%
-2026-03-25 15:00:28,562 PAT.test INFO: CMC curve, Rank-10 :89.4%
-2026-03-25 15:00:28,562 PAT.test INFO: total inference time: 136.04
-2026-03-25 15:00:28,571 PAT.train INFO: =====best epoch: 15=====
-2026-03-25 15:00:54,003 PAT.train INFO: Epoch[16] Iteration[60/159] total_loss: 4.505, reid_loss: 4.322, pc_loss: 0.183, Acc: 0.392, Base Lr: 9.57e-04
-2026-03-25 15:01:16,544 PAT.train INFO: Epoch[16] Iteration[120/159] total_loss: 4.325, reid_loss: 4.095, pc_loss: 0.230, Acc: 0.454, Base Lr: 9.57e-04
-2026-03-25 15:01:30,505 PAT.train INFO: Epoch 16 done. Time per batch: 0.390[s] Speed: 164.1[samples/s]
-2026-03-25 15:01:30,506 PAT.test INFO: Enter inferencing
-2026-03-25 15:03:43,988 PAT.test INFO: Validation Results 
-2026-03-25 15:03:43,988 PAT.test INFO: mAP: 43.9%
-2026-03-25 15:03:43,988 PAT.test INFO: CMC curve, Rank-1  :64.0%
-2026-03-25 15:03:43,988 PAT.test INFO: CMC curve, Rank-5  :83.5%
-2026-03-25 15:03:43,988 PAT.test INFO: CMC curve, Rank-10 :89.8%
-2026-03-25 15:03:43,989 PAT.test INFO: total inference time: 133.48
-2026-03-25 15:04:08,145 PAT.train INFO: Epoch[17] Iteration[60/159] total_loss: 4.203, reid_loss: 4.177, pc_loss: 0.027, Acc: 0.420, Base Lr: 9.51e-04
-2026-03-25 15:04:29,533 PAT.train INFO: Epoch[17] Iteration[120/159] total_loss: 4.060, reid_loss: 3.935, pc_loss: 0.125, Acc: 0.489, Base Lr: 9.51e-04
-2026-03-25 15:04:42,968 PAT.train INFO: Epoch 17 done. Time per batch: 0.378[s] Speed: 169.4[samples/s]
-2026-03-25 15:04:42,968 PAT.test INFO: Enter inferencing
-2026-03-25 15:06:56,086 PAT.test INFO: Validation Results 
-2026-03-25 15:06:56,087 PAT.test INFO: mAP: 44.7%
-2026-03-25 15:06:56,087 PAT.test INFO: CMC curve, Rank-1  :64.5%
-2026-03-25 15:06:56,087 PAT.test INFO: CMC curve, Rank-5  :83.7%
-2026-03-25 15:06:56,087 PAT.test INFO: CMC curve, Rank-10 :90.0%
-2026-03-25 15:06:56,087 PAT.test INFO: total inference time: 133.11
-2026-03-25 15:07:19,732 PAT.train INFO: Epoch[18] Iteration[60/159] total_loss: 4.055, reid_loss: 3.991, pc_loss: 0.063, Acc: 0.467, Base Lr: 9.46e-04
-2026-03-25 15:07:40,950 PAT.train INFO: Epoch[18] Iteration[120/159] total_loss: 3.959, reid_loss: 3.814, pc_loss: 0.145, Acc: 0.531, Base Lr: 9.46e-04
-2026-03-25 15:07:53,970 PAT.train INFO: Epoch 18 done. Time per batch: 0.369[s] Speed: 173.7[samples/s]
-2026-03-25 15:07:53,970 PAT.test INFO: Enter inferencing
-2026-03-25 15:10:07,860 PAT.test INFO: Validation Results 
-2026-03-25 15:10:07,861 PAT.test INFO: mAP: 45.2%
-2026-03-25 15:10:07,861 PAT.test INFO: CMC curve, Rank-1  :65.1%
-2026-03-25 15:10:07,861 PAT.test INFO: CMC curve, Rank-5  :84.4%
-2026-03-25 15:10:07,861 PAT.test INFO: CMC curve, Rank-10 :90.3%
-2026-03-25 15:10:07,861 PAT.test INFO: total inference time: 133.89
-2026-03-25 15:10:33,162 PAT.train INFO: Epoch[19] Iteration[60/159] total_loss: 3.960, reid_loss: 3.881, pc_loss: 0.079, Acc: 0.480, Base Lr: 9.40e-04
-2026-03-25 15:10:56,519 PAT.train INFO: Epoch[19] Iteration[120/159] total_loss: 3.826, reid_loss: 3.674, pc_loss: 0.151, Acc: 0.546, Base Lr: 9.40e-04
-2026-03-25 15:11:09,868 PAT.train INFO: Epoch 19 done. Time per batch: 0.397[s] Speed: 161.1[samples/s]
-2026-03-25 15:11:09,869 PAT.test INFO: Enter inferencing
-2026-03-25 15:13:28,023 PAT.test INFO: Validation Results 
-2026-03-25 15:13:28,023 PAT.test INFO: mAP: 46.1%
-2026-03-25 15:13:28,024 PAT.test INFO: CMC curve, Rank-1  :65.9%
-2026-03-25 15:13:28,024 PAT.test INFO: CMC curve, Rank-5  :85.0%
-2026-03-25 15:13:28,024 PAT.test INFO: CMC curve, Rank-10 :90.7%
-2026-03-25 15:13:28,024 PAT.test INFO: total inference time: 138.15
-2026-03-25 15:13:52,981 PAT.train INFO: Epoch[20] Iteration[60/159] total_loss: 3.904, reid_loss: 3.824, pc_loss: 0.080, Acc: 0.506, Base Lr: 9.33e-04
-2026-03-25 15:14:16,773 PAT.train INFO: Epoch[20] Iteration[120/159] total_loss: 3.730, reid_loss: 3.598, pc_loss: 0.132, Acc: 0.576, Base Lr: 9.33e-04
-2026-03-25 15:14:30,095 PAT.train INFO: Epoch 20 done. Time per batch: 0.398[s] Speed: 160.9[samples/s]
-2026-03-25 15:14:30,095 PAT.test INFO: Enter inferencing
-2026-03-25 15:16:51,306 PAT.test INFO: Validation Results 
-2026-03-25 15:16:51,306 PAT.test INFO: mAP: 46.5%
-2026-03-25 15:16:51,306 PAT.test INFO: CMC curve, Rank-1  :66.2%
-2026-03-25 15:16:51,306 PAT.test INFO: CMC curve, Rank-5  :85.1%
-2026-03-25 15:16:51,306 PAT.test INFO: CMC curve, Rank-10 :91.1%
-2026-03-25 15:16:51,306 PAT.test INFO: total inference time: 141.21
-2026-03-25 15:16:51,315 PAT.train INFO: =====best epoch: 20=====
-2026-03-25 15:17:16,732 PAT.train INFO: Epoch[21] Iteration[60/159] total_loss: 3.768, reid_loss: 3.653, pc_loss: 0.114, Acc: 0.534, Base Lr: 9.26e-04
-2026-03-25 15:17:38,738 PAT.train INFO: Epoch[21] Iteration[120/159] total_loss: 3.632, reid_loss: 3.446, pc_loss: 0.185, Acc: 0.601, Base Lr: 9.26e-04
-2026-03-25 15:17:52,806 PAT.train INFO: Epoch 21 done. Time per batch: 0.387[s] Speed: 165.3[samples/s]
-2026-03-25 15:17:52,806 PAT.test INFO: Enter inferencing
-2026-03-25 15:20:14,642 PAT.test INFO: Validation Results 
-2026-03-25 15:20:14,643 PAT.test INFO: mAP: 47.1%
-2026-03-25 15:20:14,644 PAT.test INFO: CMC curve, Rank-1  :66.4%
-2026-03-25 15:20:14,644 PAT.test INFO: CMC curve, Rank-5  :85.3%
-2026-03-25 15:20:14,644 PAT.test INFO: CMC curve, Rank-10 :91.1%
-2026-03-25 15:20:14,644 PAT.test INFO: total inference time: 141.83
-2026-03-25 15:20:39,595 PAT.train INFO: Epoch[22] Iteration[60/159] total_loss: 3.569, reid_loss: 3.507, pc_loss: 0.062, Acc: 0.565, Base Lr: 9.19e-04
-2026-03-25 15:21:02,057 PAT.train INFO: Epoch[22] Iteration[120/159] total_loss: 3.529, reid_loss: 3.382, pc_loss: 0.147, Acc: 0.619, Base Lr: 9.19e-04
-2026-03-25 15:21:15,418 PAT.train INFO: Epoch 22 done. Time per batch: 0.389[s] Speed: 164.3[samples/s]
-2026-03-25 15:21:15,419 PAT.test INFO: Enter inferencing
-2026-03-25 15:23:36,423 PAT.test INFO: Validation Results 
-2026-03-25 15:23:36,424 PAT.test INFO: mAP: 47.7%
-2026-03-25 15:23:36,424 PAT.test INFO: CMC curve, Rank-1  :67.0%
-2026-03-25 15:23:36,424 PAT.test INFO: CMC curve, Rank-5  :85.8%
-2026-03-25 15:23:36,424 PAT.test INFO: CMC curve, Rank-10 :91.3%
-2026-03-25 15:23:36,425 PAT.test INFO: total inference time: 141.00
-2026-03-25 15:24:01,885 PAT.train INFO: Epoch[23] Iteration[60/159] total_loss: 3.575, reid_loss: 3.500, pc_loss: 0.075, Acc: 0.571, Base Lr: 9.12e-04
-2026-03-25 15:24:25,003 PAT.train INFO: Epoch[23] Iteration[120/159] total_loss: 3.461, reid_loss: 3.283, pc_loss: 0.178, Acc: 0.643, Base Lr: 9.12e-04
-2026-03-25 15:24:38,960 PAT.train INFO: Epoch 23 done. Time per batch: 0.401[s] Speed: 159.7[samples/s]
-2026-03-25 15:24:38,960 PAT.test INFO: Enter inferencing
-2026-03-25 15:26:58,086 PAT.test INFO: Validation Results 
-2026-03-25 15:26:58,086 PAT.test INFO: mAP: 48.1%
-2026-03-25 15:26:58,087 PAT.test INFO: CMC curve, Rank-1  :67.4%
-2026-03-25 15:26:58,087 PAT.test INFO: CMC curve, Rank-5  :86.1%
-2026-03-25 15:26:58,087 PAT.test INFO: CMC curve, Rank-10 :91.5%
-2026-03-25 15:26:58,087 PAT.test INFO: total inference time: 139.12
-2026-03-25 15:27:24,310 PAT.train INFO: Epoch[24] Iteration[60/159] total_loss: 3.437, reid_loss: 3.345, pc_loss: 0.093, Acc: 0.607, Base Lr: 9.05e-04
-2026-03-25 15:27:46,846 PAT.train INFO: Epoch[24] Iteration[120/159] total_loss: 3.336, reid_loss: 3.186, pc_loss: 0.151, Acc: 0.659, Base Lr: 9.05e-04
-2026-03-25 15:28:01,740 PAT.train INFO: Epoch 24 done. Time per batch: 0.405[s] Speed: 157.9[samples/s]
-2026-03-25 15:28:01,741 PAT.test INFO: Enter inferencing
-2026-03-25 15:30:21,913 PAT.test INFO: Validation Results 
-2026-03-25 15:30:21,913 PAT.test INFO: mAP: 48.7%
-2026-03-25 15:30:21,914 PAT.test INFO: CMC curve, Rank-1  :67.6%
-2026-03-25 15:30:21,914 PAT.test INFO: CMC curve, Rank-5  :86.3%
-2026-03-25 15:30:21,914 PAT.test INFO: CMC curve, Rank-10 :91.8%
-2026-03-25 15:30:21,914 PAT.test INFO: total inference time: 140.17
-2026-03-25 15:30:47,223 PAT.train INFO: Epoch[25] Iteration[60/159] total_loss: 3.322, reid_loss: 3.246, pc_loss: 0.075, Acc: 0.629, Base Lr: 8.97e-04
-2026-03-25 15:31:10,369 PAT.train INFO: Epoch[25] Iteration[120/159] total_loss: 3.270, reid_loss: 3.085, pc_loss: 0.184, Acc: 0.686, Base Lr: 8.97e-04
-2026-03-25 15:31:23,853 PAT.train INFO: Epoch 25 done. Time per batch: 0.394[s] Speed: 162.3[samples/s]
-2026-03-25 15:31:23,854 PAT.test INFO: Enter inferencing
-2026-03-25 15:33:40,224 PAT.test INFO: Validation Results 
-2026-03-25 15:33:40,224 PAT.test INFO: mAP: 49.0%
-2026-03-25 15:33:40,224 PAT.test INFO: CMC curve, Rank-1  :67.9%
-2026-03-25 15:33:40,224 PAT.test INFO: CMC curve, Rank-5  :86.6%
-2026-03-25 15:33:40,224 PAT.test INFO: CMC curve, Rank-10 :92.0%
-2026-03-25 15:33:40,224 PAT.test INFO: total inference time: 136.37
-2026-03-25 15:33:40,233 PAT.train INFO: =====best epoch: 25=====
-2026-03-25 15:34:05,216 PAT.train INFO: Epoch[26] Iteration[60/159] total_loss: 3.221, reid_loss: 3.088, pc_loss: 0.133, Acc: 0.640, Base Lr: 8.89e-04
-2026-03-25 15:34:27,221 PAT.train INFO: Epoch[26] Iteration[120/159] total_loss: 3.256, reid_loss: 3.003, pc_loss: 0.253, Acc: 0.696, Base Lr: 8.89e-04
-2026-03-25 15:34:41,110 PAT.train INFO: Epoch 26 done. Time per batch: 0.383[s] Speed: 167.0[samples/s]
-2026-03-25 15:34:41,110 PAT.test INFO: Enter inferencing
-2026-03-25 15:36:51,079 PAT.test INFO: Validation Results 
-2026-03-25 15:36:51,080 PAT.test INFO: mAP: 49.5%
-2026-03-25 15:36:51,080 PAT.test INFO: CMC curve, Rank-1  :68.2%
-2026-03-25 15:36:51,080 PAT.test INFO: CMC curve, Rank-5  :86.8%
-2026-03-25 15:36:51,080 PAT.test INFO: CMC curve, Rank-10 :92.1%
-2026-03-25 15:36:51,080 PAT.test INFO: total inference time: 129.97
-2026-03-25 15:37:14,938 PAT.train INFO: Epoch[27] Iteration[60/159] total_loss: 3.302, reid_loss: 3.205, pc_loss: 0.097, Acc: 0.654, Base Lr: 8.80e-04
-2026-03-25 15:37:35,475 PAT.train INFO: Epoch[27] Iteration[120/159] total_loss: 3.177, reid_loss: 3.018, pc_loss: 0.159, Acc: 0.704, Base Lr: 8.80e-04
-2026-03-25 15:37:49,052 PAT.train INFO: Epoch 27 done. Time per batch: 0.369[s] Speed: 173.4[samples/s]
-2026-03-25 15:37:49,052 PAT.test INFO: Enter inferencing
-2026-03-25 15:40:09,456 PAT.test INFO: Validation Results 
-2026-03-25 15:40:09,457 PAT.test INFO: mAP: 49.9%
-2026-03-25 15:40:09,457 PAT.test INFO: CMC curve, Rank-1  :67.9%
-2026-03-25 15:40:09,457 PAT.test INFO: CMC curve, Rank-5  :87.0%
-2026-03-25 15:40:09,457 PAT.test INFO: CMC curve, Rank-10 :92.3%
-2026-03-25 15:40:09,457 PAT.test INFO: total inference time: 140.40
-2026-03-25 15:40:34,063 PAT.train INFO: Epoch[28] Iteration[60/159] total_loss: 3.108, reid_loss: 3.041, pc_loss: 0.067, Acc: 0.675, Base Lr: 8.72e-04
-2026-03-25 15:40:56,041 PAT.train INFO: Epoch[28] Iteration[120/159] total_loss: 3.060, reid_loss: 2.927, pc_loss: 0.134, Acc: 0.725, Base Lr: 8.72e-04
-2026-03-25 15:41:10,562 PAT.train INFO: Epoch 28 done. Time per batch: 0.389[s] Speed: 164.5[samples/s]
-2026-03-25 15:41:10,563 PAT.test INFO: Enter inferencing
-2026-03-25 15:43:30,230 PAT.test INFO: Validation Results 
-2026-03-25 15:43:30,231 PAT.test INFO: mAP: 50.4%
-2026-03-25 15:43:30,231 PAT.test INFO: CMC curve, Rank-1  :68.7%
-2026-03-25 15:43:30,231 PAT.test INFO: CMC curve, Rank-5  :87.1%
-2026-03-25 15:43:30,231 PAT.test INFO: CMC curve, Rank-10 :92.4%
-2026-03-25 15:43:30,231 PAT.test INFO: total inference time: 139.67
-2026-03-25 15:43:54,142 PAT.train INFO: Epoch[29] Iteration[60/159] total_loss: 2.961, reid_loss: 2.911, pc_loss: 0.050, Acc: 0.700, Base Lr: 8.63e-04
-2026-03-25 15:44:17,159 PAT.train INFO: Epoch[29] Iteration[120/159] total_loss: 3.009, reid_loss: 2.831, pc_loss: 0.178, Acc: 0.743, Base Lr: 8.63e-04
-2026-03-25 15:44:32,015 PAT.train INFO: Epoch 29 done. Time per batch: 0.391[s] Speed: 163.7[samples/s]
-2026-03-25 15:44:32,016 PAT.test INFO: Enter inferencing
-2026-03-25 15:46:52,595 PAT.test INFO: Validation Results 
-2026-03-25 15:46:52,596 PAT.test INFO: mAP: 51.0%
-2026-03-25 15:46:52,596 PAT.test INFO: CMC curve, Rank-1  :69.2%
-2026-03-25 15:46:52,596 PAT.test INFO: CMC curve, Rank-5  :87.3%
-2026-03-25 15:46:52,596 PAT.test INFO: CMC curve, Rank-10 :92.7%
-2026-03-25 15:46:52,596 PAT.test INFO: total inference time: 140.58
-2026-03-25 15:47:17,978 PAT.train INFO: Epoch[30] Iteration[60/159] total_loss: 2.910, reid_loss: 2.856, pc_loss: 0.053, Acc: 0.726, Base Lr: 8.54e-04
-2026-03-25 15:47:40,854 PAT.train INFO: Epoch[30] Iteration[120/159] total_loss: 2.907, reid_loss: 2.776, pc_loss: 0.131, Acc: 0.760, Base Lr: 8.54e-04
-2026-03-25 15:47:54,704 PAT.train INFO: Epoch 30 done. Time per batch: 0.395[s] Speed: 161.8[samples/s]
-2026-03-25 15:47:54,704 PAT.test INFO: Enter inferencing
-2026-03-25 15:50:14,384 PAT.test INFO: Validation Results 
-2026-03-25 15:50:14,384 PAT.test INFO: mAP: 51.5%
-2026-03-25 15:50:14,384 PAT.test INFO: CMC curve, Rank-1  :69.6%
-2026-03-25 15:50:14,384 PAT.test INFO: CMC curve, Rank-5  :87.7%
-2026-03-25 15:50:14,384 PAT.test INFO: CMC curve, Rank-10 :92.9%
-2026-03-25 15:50:14,384 PAT.test INFO: total inference time: 139.68
-2026-03-25 15:50:14,393 PAT.train INFO: =====best epoch: 30=====
-2026-03-25 15:50:39,665 PAT.train INFO: Epoch[31] Iteration[60/159] total_loss: 2.896, reid_loss: 2.823, pc_loss: 0.073, Acc: 0.722, Base Lr: 8.44e-04
-2026-03-25 15:51:03,143 PAT.train INFO: Epoch[31] Iteration[120/159] total_loss: 2.826, reid_loss: 2.697, pc_loss: 0.129, Acc: 0.766, Base Lr: 8.44e-04
-2026-03-25 15:51:18,057 PAT.train INFO: Epoch 31 done. Time per batch: 0.401[s] Speed: 159.6[samples/s]
-2026-03-25 15:51:18,057 PAT.test INFO: Enter inferencing
-2026-03-25 15:53:39,724 PAT.test INFO: Validation Results 
-2026-03-25 15:53:39,725 PAT.test INFO: mAP: 51.8%
-2026-03-25 15:53:39,725 PAT.test INFO: CMC curve, Rank-1  :69.6%
-2026-03-25 15:53:39,725 PAT.test INFO: CMC curve, Rank-5  :87.9%
-2026-03-25 15:53:39,725 PAT.test INFO: CMC curve, Rank-10 :92.9%
-2026-03-25 15:53:39,725 PAT.test INFO: total inference time: 141.66
-2026-03-25 15:54:05,048 PAT.train INFO: Epoch[32] Iteration[60/159] total_loss: 2.883, reid_loss: 2.795, pc_loss: 0.089, Acc: 0.739, Base Lr: 8.35e-04
-2026-03-25 15:54:27,917 PAT.train INFO: Epoch[32] Iteration[120/159] total_loss: 2.821, reid_loss: 2.688, pc_loss: 0.132, Acc: 0.781, Base Lr: 8.35e-04
-2026-03-25 15:54:43,262 PAT.train INFO: Epoch 32 done. Time per batch: 0.405[s] Speed: 158.2[samples/s]
-2026-03-25 15:54:43,262 PAT.test INFO: Enter inferencing
-2026-03-25 15:57:05,583 PAT.test INFO: Validation Results 
-2026-03-25 15:57:05,584 PAT.test INFO: mAP: 52.1%
-2026-03-25 15:57:05,584 PAT.test INFO: CMC curve, Rank-1  :70.1%
-2026-03-25 15:57:05,584 PAT.test INFO: CMC curve, Rank-5  :88.3%
-2026-03-25 15:57:05,584 PAT.test INFO: CMC curve, Rank-10 :93.1%
-2026-03-25 15:57:05,584 PAT.test INFO: total inference time: 142.32
-2026-03-25 15:57:30,771 PAT.train INFO: Epoch[33] Iteration[60/159] total_loss: 2.819, reid_loss: 2.688, pc_loss: 0.131, Acc: 0.759, Base Lr: 8.25e-04
-2026-03-25 15:57:54,169 PAT.train INFO: Epoch[33] Iteration[120/159] total_loss: 2.827, reid_loss: 2.588, pc_loss: 0.238, Acc: 0.800, Base Lr: 8.25e-04
-2026-03-25 15:58:07,554 PAT.train INFO: Epoch 33 done. Time per batch: 0.395[s] Speed: 162.2[samples/s]
-2026-03-25 15:58:07,554 PAT.test INFO: Enter inferencing
-2026-03-25 16:00:23,362 PAT.test INFO: Validation Results 
-2026-03-25 16:00:23,363 PAT.test INFO: mAP: 52.5%
-2026-03-25 16:00:23,363 PAT.test INFO: CMC curve, Rank-1  :70.1%
-2026-03-25 16:00:23,363 PAT.test INFO: CMC curve, Rank-5  :88.2%
-2026-03-25 16:00:23,363 PAT.test INFO: CMC curve, Rank-10 :93.2%
-2026-03-25 16:00:23,363 PAT.test INFO: total inference time: 135.81
-2026-03-25 16:00:48,237 PAT.train INFO: Epoch[34] Iteration[60/159] total_loss: 3.885, reid_loss: 3.735, pc_loss: 0.150, Acc: 0.778, Base Lr: 8.15e-04
-2026-03-25 16:01:10,584 PAT.train INFO: Epoch[34] Iteration[120/159] total_loss: 3.428, reid_loss: 3.252, pc_loss: 0.176, Acc: 0.799, Base Lr: 8.15e-04
-2026-03-25 16:01:24,196 PAT.train INFO: Epoch 34 done. Time per batch: 0.387[s] Speed: 165.2[samples/s]
-2026-03-25 16:01:24,197 PAT.test INFO: Enter inferencing
-2026-03-25 16:03:37,111 PAT.test INFO: Validation Results 
-2026-03-25 16:03:37,112 PAT.test INFO: mAP: 52.6%
-2026-03-25 16:03:37,112 PAT.test INFO: CMC curve, Rank-1  :70.5%
-2026-03-25 16:03:37,112 PAT.test INFO: CMC curve, Rank-5  :88.5%
-2026-03-25 16:03:37,112 PAT.test INFO: CMC curve, Rank-10 :93.4%
-2026-03-25 16:03:37,112 PAT.test INFO: total inference time: 132.91
-2026-03-25 16:04:01,577 PAT.train INFO: Epoch[35] Iteration[60/159] total_loss: 2.950, reid_loss: 2.900, pc_loss: 0.050, Acc: 0.779, Base Lr: 8.05e-04
-2026-03-25 16:04:23,329 PAT.train INFO: Epoch[35] Iteration[120/159] total_loss: 2.896, reid_loss: 2.772, pc_loss: 0.123, Acc: 0.814, Base Lr: 8.05e-04
-2026-03-25 16:04:37,076 PAT.train INFO: Epoch 35 done. Time per batch: 0.379[s] Speed: 168.7[samples/s]
-2026-03-25 16:04:37,076 PAT.test INFO: Enter inferencing
-2026-03-25 16:06:43,199 PAT.test INFO: Validation Results 
-2026-03-25 16:06:43,200 PAT.test INFO: mAP: 52.7%
-2026-03-25 16:06:43,200 PAT.test INFO: CMC curve, Rank-1  :70.6%
-2026-03-25 16:06:43,200 PAT.test INFO: CMC curve, Rank-5  :88.6%
-2026-03-25 16:06:43,200 PAT.test INFO: CMC curve, Rank-10 :93.4%
-2026-03-25 16:06:43,200 PAT.test INFO: total inference time: 126.12
-2026-03-25 16:06:43,208 PAT.train INFO: =====best epoch: 35=====
-2026-03-25 16:07:08,531 PAT.train INFO: Epoch[36] Iteration[60/159] total_loss: 2.885, reid_loss: 2.813, pc_loss: 0.072, Acc: 0.811, Base Lr: 7.94e-04
-2026-03-25 16:07:30,094 PAT.train INFO: Epoch[36] Iteration[120/159] total_loss: 2.902, reid_loss: 2.711, pc_loss: 0.190, Acc: 0.836, Base Lr: 7.94e-04
-2026-03-25 16:07:43,499 PAT.train INFO: Epoch 36 done. Time per batch: 0.379[s] Speed: 168.7[samples/s]
-2026-03-25 16:07:43,499 PAT.test INFO: Enter inferencing
-2026-03-25 16:09:56,240 PAT.test INFO: Validation Results 
-2026-03-25 16:09:56,241 PAT.test INFO: mAP: 52.7%
-2026-03-25 16:09:56,241 PAT.test INFO: CMC curve, Rank-1  :70.6%
-2026-03-25 16:09:56,241 PAT.test INFO: CMC curve, Rank-5  :88.5%
-2026-03-25 16:09:56,241 PAT.test INFO: CMC curve, Rank-10 :93.5%
-2026-03-25 16:09:56,241 PAT.test INFO: total inference time: 132.74
-2026-03-25 16:10:20,873 PAT.train INFO: Epoch[37] Iteration[60/159] total_loss: 2.846, reid_loss: 2.778, pc_loss: 0.068, Acc: 0.815, Base Lr: 7.84e-04
-2026-03-25 16:10:43,044 PAT.train INFO: Epoch[37] Iteration[120/159] total_loss: 2.842, reid_loss: 2.674, pc_loss: 0.168, Acc: 0.844, Base Lr: 7.84e-04
-2026-03-25 16:10:57,437 PAT.train INFO: Epoch 37 done. Time per batch: 0.390[s] Speed: 164.3[samples/s]
-2026-03-25 16:10:57,437 PAT.test INFO: Enter inferencing
-2026-03-25 16:13:08,401 PAT.test INFO: Validation Results 
-2026-03-25 16:13:08,402 PAT.test INFO: mAP: 52.9%
-2026-03-25 16:13:08,402 PAT.test INFO: CMC curve, Rank-1  :71.0%
-2026-03-25 16:13:08,402 PAT.test INFO: CMC curve, Rank-5  :88.8%
-2026-03-25 16:13:08,402 PAT.test INFO: CMC curve, Rank-10 :93.5%
-2026-03-25 16:13:08,402 PAT.test INFO: total inference time: 130.96
-2026-03-25 16:13:32,736 PAT.train INFO: Epoch[38] Iteration[60/159] total_loss: 2.845, reid_loss: 2.719, pc_loss: 0.126, Acc: 0.833, Base Lr: 7.73e-04
-2026-03-25 16:13:53,505 PAT.train INFO: Epoch[38] Iteration[120/159] total_loss: 2.844, reid_loss: 2.631, pc_loss: 0.213, Acc: 0.855, Base Lr: 7.73e-04
-2026-03-25 16:14:06,917 PAT.train INFO: Epoch 38 done. Time per batch: 0.375[s] Speed: 170.7[samples/s]
-2026-03-25 16:14:06,917 PAT.test INFO: Enter inferencing
-2026-03-25 16:16:19,644 PAT.test INFO: Validation Results 
-2026-03-25 16:16:19,644 PAT.test INFO: mAP: 52.8%
-2026-03-25 16:16:19,645 PAT.test INFO: CMC curve, Rank-1  :70.9%
-2026-03-25 16:16:19,645 PAT.test INFO: CMC curve, Rank-5  :88.7%
-2026-03-25 16:16:19,645 PAT.test INFO: CMC curve, Rank-10 :93.4%
-2026-03-25 16:16:19,645 PAT.test INFO: total inference time: 132.72
-2026-03-25 16:16:43,856 PAT.train INFO: Epoch[39] Iteration[60/159] total_loss: 2.812, reid_loss: 2.700, pc_loss: 0.112, Acc: 0.845, Base Lr: 7.62e-04
-2026-03-25 16:17:06,571 PAT.train INFO: Epoch[39] Iteration[120/159] total_loss: 2.770, reid_loss: 2.608, pc_loss: 0.162, Acc: 0.865, Base Lr: 7.62e-04
-2026-03-25 16:17:19,859 PAT.train INFO: Epoch 39 done. Time per batch: 0.383[s] Speed: 166.9[samples/s]
-2026-03-25 16:17:19,859 PAT.test INFO: Enter inferencing
-2026-03-25 16:19:36,815 PAT.test INFO: Validation Results 
-2026-03-25 16:19:36,815 PAT.test INFO: mAP: 52.9%
-2026-03-25 16:19:36,815 PAT.test INFO: CMC curve, Rank-1  :71.0%
-2026-03-25 16:19:36,815 PAT.test INFO: CMC curve, Rank-5  :88.9%
-2026-03-25 16:19:36,815 PAT.test INFO: CMC curve, Rank-10 :93.5%
-2026-03-25 16:19:36,815 PAT.test INFO: total inference time: 136.95
-2026-03-25 16:20:00,686 PAT.train INFO: Epoch[40] Iteration[60/159] total_loss: 2.779, reid_loss: 2.660, pc_loss: 0.119, Acc: 0.857, Base Lr: 7.51e-04
-2026-03-25 16:20:23,591 PAT.train INFO: Epoch[40] Iteration[120/159] total_loss: 2.765, reid_loss: 2.569, pc_loss: 0.195, Acc: 0.878, Base Lr: 7.51e-04
-2026-03-25 16:20:37,701 PAT.train INFO: Epoch 40 done. Time per batch: 0.388[s] Speed: 165.1[samples/s]
-2026-03-25 16:20:37,701 PAT.test INFO: Enter inferencing
-2026-03-25 16:22:57,783 PAT.test INFO: Validation Results 
-2026-03-25 16:22:57,784 PAT.test INFO: mAP: 52.9%
-2026-03-25 16:22:57,784 PAT.test INFO: CMC curve, Rank-1  :71.1%
-2026-03-25 16:22:57,784 PAT.test INFO: CMC curve, Rank-5  :88.8%
-2026-03-25 16:22:57,784 PAT.test INFO: CMC curve, Rank-10 :93.6%
-2026-03-25 16:22:57,784 PAT.test INFO: total inference time: 140.08
-2026-03-25 16:22:57,792 PAT.train INFO: =====best epoch: 40=====
-2026-03-25 16:23:23,170 PAT.train INFO: Epoch[41] Iteration[60/159] total_loss: 2.723, reid_loss: 2.615, pc_loss: 0.108, Acc: 0.867, Base Lr: 7.39e-04
-2026-03-25 16:23:45,414 PAT.train INFO: Epoch[41] Iteration[120/159] total_loss: 2.699, reid_loss: 2.555, pc_loss: 0.145, Acc: 0.879, Base Lr: 7.39e-04
-2026-03-25 16:23:59,493 PAT.train INFO: Epoch 41 done. Time per batch: 0.388[s] Speed: 164.8[samples/s]
-2026-03-25 16:23:59,493 PAT.test INFO: Enter inferencing
-2026-03-25 16:26:20,057 PAT.test INFO: Validation Results 
-2026-03-25 16:26:20,057 PAT.test INFO: mAP: 53.0%
-2026-03-25 16:26:20,058 PAT.test INFO: CMC curve, Rank-1  :71.0%
-2026-03-25 16:26:20,058 PAT.test INFO: CMC curve, Rank-5  :88.9%
-2026-03-25 16:26:20,058 PAT.test INFO: CMC curve, Rank-10 :93.7%
-2026-03-25 16:26:20,058 PAT.test INFO: total inference time: 140.56
-2026-03-25 16:26:45,802 PAT.train INFO: Epoch[42] Iteration[60/159] total_loss: 2.651, reid_loss: 2.598, pc_loss: 0.054, Acc: 0.875, Base Lr: 7.28e-04
-2026-03-25 16:27:09,046 PAT.train INFO: Epoch[42] Iteration[120/159] total_loss: 2.655, reid_loss: 2.518, pc_loss: 0.137, Acc: 0.888, Base Lr: 7.28e-04
-2026-03-25 16:27:23,101 PAT.train INFO: Epoch 42 done. Time per batch: 0.401[s] Speed: 159.5[samples/s]
-2026-03-25 16:27:23,101 PAT.test INFO: Enter inferencing
-2026-03-25 16:29:41,553 PAT.test INFO: Validation Results 
-2026-03-25 16:29:41,554 PAT.test INFO: mAP: 53.0%
-2026-03-25 16:29:41,554 PAT.test INFO: CMC curve, Rank-1  :71.2%
-2026-03-25 16:29:41,554 PAT.test INFO: CMC curve, Rank-5  :88.8%
-2026-03-25 16:29:41,554 PAT.test INFO: CMC curve, Rank-10 :93.6%
-2026-03-25 16:29:41,554 PAT.test INFO: total inference time: 138.45
-2026-03-25 16:30:06,105 PAT.train INFO: Epoch[43] Iteration[60/159] total_loss: 2.652, reid_loss: 2.557, pc_loss: 0.095, Acc: 0.884, Base Lr: 7.16e-04
-2026-03-25 16:30:27,019 PAT.train INFO: Epoch[43] Iteration[120/159] total_loss: 2.739, reid_loss: 2.508, pc_loss: 0.231, Acc: 0.887, Base Lr: 7.16e-04
-2026-03-25 16:30:42,284 PAT.train INFO: Epoch 43 done. Time per batch: 0.387[s] Speed: 165.5[samples/s]
-2026-03-25 16:30:42,285 PAT.test INFO: Enter inferencing
-2026-03-25 16:32:58,982 PAT.test INFO: Validation Results 
-2026-03-25 16:32:58,983 PAT.test INFO: mAP: 53.1%
-2026-03-25 16:32:58,983 PAT.test INFO: CMC curve, Rank-1  :71.2%
-2026-03-25 16:32:58,983 PAT.test INFO: CMC curve, Rank-5  :88.8%
-2026-03-25 16:32:58,983 PAT.test INFO: CMC curve, Rank-10 :93.7%
-2026-03-25 16:32:58,984 PAT.test INFO: total inference time: 136.70
-2026-03-25 16:33:23,171 PAT.train INFO: Epoch[44] Iteration[60/159] total_loss: 2.600, reid_loss: 2.519, pc_loss: 0.081, Acc: 0.885, Base Lr: 7.04e-04
-2026-03-25 16:33:46,312 PAT.train INFO: Epoch[44] Iteration[120/159] total_loss: 2.716, reid_loss: 2.482, pc_loss: 0.234, Acc: 0.895, Base Lr: 7.04e-04
-2026-03-25 16:33:59,552 PAT.train INFO: Epoch 44 done. Time per batch: 0.386[s] Speed: 166.0[samples/s]
-2026-03-25 16:33:59,552 PAT.test INFO: Enter inferencing
-2026-03-25 16:36:10,777 PAT.test INFO: Validation Results 
-2026-03-25 16:36:10,777 PAT.test INFO: mAP: 53.2%
-2026-03-25 16:36:10,777 PAT.test INFO: CMC curve, Rank-1  :71.3%
-2026-03-25 16:36:10,777 PAT.test INFO: CMC curve, Rank-5  :89.1%
-2026-03-25 16:36:10,777 PAT.test INFO: CMC curve, Rank-10 :93.8%
-2026-03-25 16:36:10,777 PAT.test INFO: total inference time: 131.22
-2026-03-25 16:36:34,119 PAT.train INFO: Epoch[45] Iteration[60/159] total_loss: 2.654, reid_loss: 2.507, pc_loss: 0.147, Acc: 0.894, Base Lr: 6.92e-04
-2026-03-25 16:36:56,052 PAT.train INFO: Epoch[45] Iteration[120/159] total_loss: 2.729, reid_loss: 2.455, pc_loss: 0.274, Acc: 0.898, Base Lr: 6.92e-04
-2026-03-25 16:37:08,821 PAT.train INFO: Epoch 45 done. Time per batch: 0.372[s] Speed: 172.1[samples/s]
-2026-03-25 16:37:08,821 PAT.test INFO: Enter inferencing
-2026-03-25 16:39:20,147 PAT.test INFO: Validation Results 
-2026-03-25 16:39:20,148 PAT.test INFO: mAP: 53.3%
-2026-03-25 16:39:20,148 PAT.test INFO: CMC curve, Rank-1  :71.4%
-2026-03-25 16:39:20,148 PAT.test INFO: CMC curve, Rank-5  :89.1%
-2026-03-25 16:39:20,148 PAT.test INFO: CMC curve, Rank-10 :93.8%
-2026-03-25 16:39:20,148 PAT.test INFO: total inference time: 131.32
-2026-03-25 16:39:20,156 PAT.train INFO: =====best epoch: 45=====
-2026-03-25 16:39:45,398 PAT.train INFO: Epoch[46] Iteration[60/159] total_loss: 2.657, reid_loss: 2.494, pc_loss: 0.163, Acc: 0.892, Base Lr: 6.80e-04
-2026-03-25 16:40:06,272 PAT.train INFO: Epoch[46] Iteration[120/159] total_loss: 2.716, reid_loss: 2.437, pc_loss: 0.279, Acc: 0.904, Base Lr: 6.80e-04
-2026-03-25 16:40:21,457 PAT.train INFO: Epoch 46 done. Time per batch: 0.386[s] Speed: 165.8[samples/s]
-2026-03-25 16:40:21,458 PAT.test INFO: Enter inferencing
-2026-03-25 16:42:31,938 PAT.test INFO: Validation Results 
-2026-03-25 16:42:31,939 PAT.test INFO: mAP: 53.3%
-2026-03-25 16:42:31,939 PAT.test INFO: CMC curve, Rank-1  :71.7%
-2026-03-25 16:42:31,939 PAT.test INFO: CMC curve, Rank-5  :88.9%
-2026-03-25 16:42:31,939 PAT.test INFO: CMC curve, Rank-10 :93.8%
-2026-03-25 16:42:31,939 PAT.test INFO: total inference time: 130.48
-2026-03-25 16:42:56,241 PAT.train INFO: Epoch[47] Iteration[60/159] total_loss: 2.651, reid_loss: 2.479, pc_loss: 0.173, Acc: 0.900, Base Lr: 6.68e-04
-2026-03-25 16:43:18,741 PAT.train INFO: Epoch[47] Iteration[120/159] total_loss: 2.638, reid_loss: 2.425, pc_loss: 0.213, Acc: 0.909, Base Lr: 6.68e-04
-2026-03-25 16:43:32,405 PAT.train INFO: Epoch 47 done. Time per batch: 0.385[s] Speed: 166.2[samples/s]
-2026-03-25 16:43:32,406 PAT.test INFO: Enter inferencing
-2026-03-25 16:45:45,177 PAT.test INFO: Validation Results 
-2026-03-25 16:45:45,178 PAT.test INFO: mAP: 53.4%
-2026-03-25 16:45:45,178 PAT.test INFO: CMC curve, Rank-1  :71.8%
-2026-03-25 16:45:45,178 PAT.test INFO: CMC curve, Rank-5  :89.3%
-2026-03-25 16:45:45,178 PAT.test INFO: CMC curve, Rank-10 :93.9%
-2026-03-25 16:45:45,178 PAT.test INFO: total inference time: 132.77
-2026-03-25 16:46:08,762 PAT.train INFO: Epoch[48] Iteration[60/159] total_loss: 2.614, reid_loss: 2.478, pc_loss: 0.136, Acc: 0.893, Base Lr: 6.55e-04
-2026-03-25 16:46:31,276 PAT.train INFO: Epoch[48] Iteration[120/159] total_loss: 2.592, reid_loss: 2.418, pc_loss: 0.173, Acc: 0.904, Base Lr: 6.55e-04
-2026-03-25 16:46:44,472 PAT.train INFO: Epoch 48 done. Time per batch: 0.377[s] Speed: 169.5[samples/s]
-2026-03-25 16:46:44,472 PAT.test INFO: Enter inferencing
-2026-03-25 16:49:02,668 PAT.test INFO: Validation Results 
-2026-03-25 16:49:02,669 PAT.test INFO: mAP: 53.4%
-2026-03-25 16:49:02,669 PAT.test INFO: CMC curve, Rank-1  :71.9%
-2026-03-25 16:49:02,669 PAT.test INFO: CMC curve, Rank-5  :89.1%
-2026-03-25 16:49:02,669 PAT.test INFO: CMC curve, Rank-10 :93.9%
-2026-03-25 16:49:02,669 PAT.test INFO: total inference time: 138.19
-2026-03-25 16:49:26,814 PAT.train INFO: Epoch[49] Iteration[60/159] total_loss: 2.595, reid_loss: 2.452, pc_loss: 0.143, Acc: 0.902, Base Lr: 6.43e-04
-2026-03-25 16:49:50,389 PAT.train INFO: Epoch[49] Iteration[120/159] total_loss: 2.584, reid_loss: 2.395, pc_loss: 0.189, Acc: 0.913, Base Lr: 6.43e-04
-2026-03-25 16:50:02,999 PAT.train INFO: Epoch 49 done. Time per batch: 0.384[s] Speed: 166.6[samples/s]
-2026-03-25 16:50:03,000 PAT.test INFO: Enter inferencing
-2026-03-25 16:52:24,549 PAT.test INFO: Validation Results 
-2026-03-25 16:52:24,550 PAT.test INFO: mAP: 53.4%
-2026-03-25 16:52:24,550 PAT.test INFO: CMC curve, Rank-1  :71.7%
-2026-03-25 16:52:24,550 PAT.test INFO: CMC curve, Rank-5  :89.1%
-2026-03-25 16:52:24,550 PAT.test INFO: CMC curve, Rank-10 :94.0%
-2026-03-25 16:52:24,550 PAT.test INFO: total inference time: 141.55
-2026-03-25 16:52:49,515 PAT.train INFO: Epoch[50] Iteration[60/159] total_loss: 2.542, reid_loss: 2.438, pc_loss: 0.105, Acc: 0.903, Base Lr: 6.30e-04
-2026-03-25 16:53:11,601 PAT.train INFO: Epoch[50] Iteration[120/159] total_loss: 2.580, reid_loss: 2.383, pc_loss: 0.196, Acc: 0.916, Base Lr: 6.30e-04
-2026-03-25 16:53:25,732 PAT.train INFO: Epoch 50 done. Time per batch: 0.389[s] Speed: 164.3[samples/s]
-2026-03-25 16:53:25,733 PAT.test INFO: Enter inferencing
-2026-03-25 16:55:46,436 PAT.test INFO: Validation Results 
-2026-03-25 16:55:46,437 PAT.test INFO: mAP: 53.5%
-2026-03-25 16:55:46,437 PAT.test INFO: CMC curve, Rank-1  :72.0%
-2026-03-25 16:55:46,437 PAT.test INFO: CMC curve, Rank-5  :89.3%
-2026-03-25 16:55:46,437 PAT.test INFO: CMC curve, Rank-10 :93.9%
-2026-03-25 16:55:46,438 PAT.test INFO: total inference time: 140.70
-2026-03-25 16:55:46,446 PAT.train INFO: =====best epoch: 50=====
-2026-03-25 16:56:11,674 PAT.train INFO: Epoch[51] Iteration[60/159] total_loss: 2.496, reid_loss: 2.391, pc_loss: 0.105, Acc: 0.909, Base Lr: 6.17e-04
-2026-03-25 16:56:35,648 PAT.train INFO: Epoch[51] Iteration[120/159] total_loss: 2.583, reid_loss: 2.351, pc_loss: 0.233, Acc: 0.919, Base Lr: 6.17e-04
-2026-03-25 16:56:49,368 PAT.train INFO: Epoch 51 done. Time per batch: 0.396[s] Speed: 161.5[samples/s]
-2026-03-25 16:56:49,368 PAT.test INFO: Enter inferencing
-2026-03-25 16:59:05,857 PAT.test INFO: Validation Results 
-2026-03-25 16:59:05,857 PAT.test INFO: mAP: 53.5%
-2026-03-25 16:59:05,857 PAT.test INFO: CMC curve, Rank-1  :72.0%
-2026-03-25 16:59:05,857 PAT.test INFO: CMC curve, Rank-5  :89.4%
-2026-03-25 16:59:05,857 PAT.test INFO: CMC curve, Rank-10 :94.0%
-2026-03-25 16:59:05,857 PAT.test INFO: total inference time: 136.49
-2026-03-25 16:59:31,042 PAT.train INFO: Epoch[52] Iteration[60/159] total_loss: 2.516, reid_loss: 2.388, pc_loss: 0.128, Acc: 0.916, Base Lr: 6.05e-04
-2026-03-25 16:59:52,909 PAT.train INFO: Epoch[52] Iteration[120/159] total_loss: 2.636, reid_loss: 2.345, pc_loss: 0.290, Acc: 0.921, Base Lr: 6.05e-04
-2026-03-25 17:00:07,385 PAT.train INFO: Epoch 52 done. Time per batch: 0.392[s] Speed: 163.4[samples/s]
-2026-03-25 17:00:07,385 PAT.test INFO: Enter inferencing
-2026-03-25 17:02:22,833 PAT.test INFO: Validation Results 
-2026-03-25 17:02:22,834 PAT.test INFO: mAP: 53.6%
-2026-03-25 17:02:22,834 PAT.test INFO: CMC curve, Rank-1  :72.2%
-2026-03-25 17:02:22,834 PAT.test INFO: CMC curve, Rank-5  :89.3%
-2026-03-25 17:02:22,834 PAT.test INFO: CMC curve, Rank-10 :94.0%
-2026-03-25 17:02:22,834 PAT.test INFO: total inference time: 135.45
-2026-03-25 17:02:47,963 PAT.train INFO: Epoch[53] Iteration[60/159] total_loss: 2.531, reid_loss: 2.386, pc_loss: 0.146, Acc: 0.918, Base Lr: 5.92e-04
-2026-03-25 17:03:09,630 PAT.train INFO: Epoch[53] Iteration[120/159] total_loss: 2.624, reid_loss: 2.338, pc_loss: 0.286, Acc: 0.925, Base Lr: 5.92e-04
-2026-03-25 17:03:24,169 PAT.train INFO: Epoch 53 done. Time per batch: 0.390[s] Speed: 163.9[samples/s]
-2026-03-25 17:03:24,169 PAT.test INFO: Enter inferencing
-2026-03-25 17:05:34,046 PAT.test INFO: Validation Results 
-2026-03-25 17:05:34,046 PAT.test INFO: mAP: 53.6%
-2026-03-25 17:05:34,046 PAT.test INFO: CMC curve, Rank-1  :72.2%
-2026-03-25 17:05:34,046 PAT.test INFO: CMC curve, Rank-5  :89.5%
-2026-03-25 17:05:34,046 PAT.test INFO: CMC curve, Rank-10 :94.0%
-2026-03-25 17:05:34,046 PAT.test INFO: total inference time: 129.87
-2026-03-25 17:05:58,507 PAT.train INFO: Epoch[54] Iteration[60/159] total_loss: 2.571, reid_loss: 2.373, pc_loss: 0.198, Acc: 0.920, Base Lr: 5.79e-04
-2026-03-25 17:06:19,195 PAT.train INFO: Epoch[54] Iteration[120/159] total_loss: 2.593, reid_loss: 2.335, pc_loss: 0.258, Acc: 0.927, Base Lr: 5.79e-04
-2026-03-25 17:06:32,422 PAT.train INFO: Epoch 54 done. Time per batch: 0.374[s] Speed: 171.1[samples/s]
-2026-03-25 17:06:32,423 PAT.test INFO: Enter inferencing
-2026-03-25 17:08:40,837 PAT.test INFO: Validation Results 
-2026-03-25 17:08:40,838 PAT.test INFO: mAP: 53.7%
-2026-03-25 17:08:40,838 PAT.test INFO: CMC curve, Rank-1  :72.4%
-2026-03-25 17:08:40,838 PAT.test INFO: CMC curve, Rank-5  :89.3%
-2026-03-25 17:08:40,838 PAT.test INFO: CMC curve, Rank-10 :94.0%
-2026-03-25 17:08:40,838 PAT.test INFO: total inference time: 128.41
-2026-03-25 17:09:05,342 PAT.train INFO: Epoch[55] Iteration[60/159] total_loss: 2.439, reid_loss: 2.384, pc_loss: 0.055, Acc: 0.915, Base Lr: 5.66e-04
-2026-03-25 17:09:26,995 PAT.train INFO: Epoch[55] Iteration[120/159] total_loss: 2.494, reid_loss: 2.312, pc_loss: 0.182, Acc: 0.931, Base Lr: 5.66e-04
-2026-03-25 17:09:40,789 PAT.train INFO: Epoch 55 done. Time per batch: 0.384[s] Speed: 166.6[samples/s]
-2026-03-25 17:09:40,789 PAT.test INFO: Enter inferencing
-2026-03-25 17:11:52,427 PAT.test INFO: Validation Results 
-2026-03-25 17:11:52,428 PAT.test INFO: mAP: 53.7%
-2026-03-25 17:11:52,428 PAT.test INFO: CMC curve, Rank-1  :72.5%
-2026-03-25 17:11:52,428 PAT.test INFO: CMC curve, Rank-5  :89.4%
-2026-03-25 17:11:52,428 PAT.test INFO: CMC curve, Rank-10 :94.2%
-2026-03-25 17:11:52,428 PAT.test INFO: total inference time: 131.64
-2026-03-25 17:11:52,437 PAT.train INFO: =====best epoch: 55=====
-2026-03-25 17:12:17,702 PAT.train INFO: Epoch[56] Iteration[60/159] total_loss: 2.491, reid_loss: 2.332, pc_loss: 0.159, Acc: 0.929, Base Lr: 5.53e-04
-2026-03-25 17:12:40,009 PAT.train INFO: Epoch[56] Iteration[120/159] total_loss: 2.530, reid_loss: 2.306, pc_loss: 0.224, Acc: 0.930, Base Lr: 5.53e-04
-2026-03-25 17:12:53,894 PAT.train INFO: Epoch 56 done. Time per batch: 0.387[s] Speed: 165.4[samples/s]
-2026-03-25 17:12:53,894 PAT.test INFO: Enter inferencing
-2026-03-25 17:15:03,863 PAT.test INFO: Validation Results 
-2026-03-25 17:15:03,863 PAT.test INFO: mAP: 53.7%
-2026-03-25 17:15:03,864 PAT.test INFO: CMC curve, Rank-1  :72.4%
-2026-03-25 17:15:03,864 PAT.test INFO: CMC curve, Rank-5  :89.6%
-2026-03-25 17:15:03,864 PAT.test INFO: CMC curve, Rank-10 :94.1%
-2026-03-25 17:15:03,864 PAT.test INFO: total inference time: 129.97
-2026-03-25 17:15:28,607 PAT.train INFO: Epoch[57] Iteration[60/159] total_loss: 2.477, reid_loss: 2.325, pc_loss: 0.152, Acc: 0.927, Base Lr: 5.40e-04
-2026-03-25 17:15:50,892 PAT.train INFO: Epoch[57] Iteration[120/159] total_loss: 2.488, reid_loss: 2.287, pc_loss: 0.202, Acc: 0.938, Base Lr: 5.40e-04
-2026-03-25 17:16:04,226 PAT.train INFO: Epoch 57 done. Time per batch: 0.387[s] Speed: 165.5[samples/s]
-2026-03-25 17:16:04,226 PAT.test INFO: Enter inferencing
-2026-03-25 17:18:15,761 PAT.test INFO: Validation Results 
-2026-03-25 17:18:15,762 PAT.test INFO: mAP: 53.8%
-2026-03-25 17:18:15,762 PAT.test INFO: CMC curve, Rank-1  :72.4%
-2026-03-25 17:18:15,762 PAT.test INFO: CMC curve, Rank-5  :89.5%
-2026-03-25 17:18:15,762 PAT.test INFO: CMC curve, Rank-10 :94.1%
-2026-03-25 17:18:15,762 PAT.test INFO: total inference time: 131.53
-2026-03-25 17:18:39,981 PAT.train INFO: Epoch[58] Iteration[60/159] total_loss: 2.463, reid_loss: 2.331, pc_loss: 0.132, Acc: 0.925, Base Lr: 5.27e-04
-2026-03-25 17:19:01,731 PAT.train INFO: Epoch[58] Iteration[120/159] total_loss: 2.500, reid_loss: 2.280, pc_loss: 0.220, Acc: 0.936, Base Lr: 5.27e-04
-2026-03-25 17:19:15,863 PAT.train INFO: Epoch 58 done. Time per batch: 0.383[s] Speed: 167.2[samples/s]
-2026-03-25 17:19:15,864 PAT.test INFO: Enter inferencing
-2026-03-25 17:21:32,130 PAT.test INFO: Validation Results 
-2026-03-25 17:21:32,131 PAT.test INFO: mAP: 53.9%
-2026-03-25 17:21:32,131 PAT.test INFO: CMC curve, Rank-1  :72.6%
-2026-03-25 17:21:32,131 PAT.test INFO: CMC curve, Rank-5  :89.6%
-2026-03-25 17:21:32,131 PAT.test INFO: CMC curve, Rank-10 :94.1%
-2026-03-25 17:21:32,131 PAT.test INFO: total inference time: 136.26
-2026-03-25 17:21:58,202 PAT.train INFO: Epoch[59] Iteration[60/159] total_loss: 2.536, reid_loss: 2.312, pc_loss: 0.224, Acc: 0.926, Base Lr: 5.14e-04
-2026-03-25 17:22:20,575 PAT.train INFO: Epoch[59] Iteration[120/159] total_loss: 2.624, reid_loss: 2.271, pc_loss: 0.353, Acc: 0.938, Base Lr: 5.14e-04
-2026-03-25 17:22:34,752 PAT.train INFO: Epoch 59 done. Time per batch: 0.399[s] Speed: 160.5[samples/s]
-2026-03-25 17:22:34,752 PAT.test INFO: Enter inferencing
-2026-03-25 17:24:54,985 PAT.test INFO: Validation Results 
-2026-03-25 17:24:54,986 PAT.test INFO: mAP: 53.9%
-2026-03-25 17:24:54,986 PAT.test INFO: CMC curve, Rank-1  :72.7%
-2026-03-25 17:24:54,986 PAT.test INFO: CMC curve, Rank-5  :89.8%
-2026-03-25 17:24:54,986 PAT.test INFO: CMC curve, Rank-10 :94.2%
-2026-03-25 17:24:54,986 PAT.test INFO: total inference time: 140.23
-2026-03-25 17:25:20,252 PAT.train INFO: Epoch[60] Iteration[60/159] total_loss: 2.391, reid_loss: 2.302, pc_loss: 0.090, Acc: 0.935, Base Lr: 5.01e-04
-2026-03-25 17:25:44,242 PAT.train INFO: Epoch[60] Iteration[120/159] total_loss: 2.514, reid_loss: 2.270, pc_loss: 0.243, Acc: 0.939, Base Lr: 5.01e-04
-2026-03-25 17:25:57,367 PAT.train INFO: Epoch 60 done. Time per batch: 0.397[s] Speed: 161.2[samples/s]
-2026-03-25 17:25:57,367 PAT.test INFO: Enter inferencing
-2026-03-25 17:28:17,717 PAT.test INFO: Validation Results 
-2026-03-25 17:28:17,717 PAT.test INFO: mAP: 53.8%
-2026-03-25 17:28:17,717 PAT.test INFO: CMC curve, Rank-1  :72.6%
-2026-03-25 17:28:17,717 PAT.test INFO: CMC curve, Rank-5  :89.9%
-2026-03-25 17:28:17,718 PAT.test INFO: CMC curve, Rank-10 :94.2%
-2026-03-25 17:28:17,718 PAT.test INFO: total inference time: 140.35
-2026-03-25 17:28:17,726 PAT.train INFO: =====best epoch: 60=====
-2026-03-25 17:28:24,973 PAT.train INFO: Number of parameter: 86.52M
-2026-03-25 17:28:25,650 PAT INFO: => Loaded UrbanElementsReID
-2026-03-25 17:28:25,650 PAT INFO:   ----------------------------------------
-2026-03-25 17:28:25,650 PAT INFO:   subset   | # ids | # images | # cameras
-2026-03-25 17:28:25,650 PAT INFO:   ----------------------------------------
-2026-03-25 17:28:25,650 PAT INFO:   query    |  1088 |    11175 |         3
-2026-03-25 17:28:25,650 PAT INFO:   gallery  |  1088 |    11175 |         3
-2026-03-25 17:28:25,650 PAT INFO:   ----------------------------------------
-2026-03-25 17:28:25,651 PAT.test INFO: Enter inferencing
-2026-03-25 17:30:38,360 PAT.test INFO: Validation Results 
-2026-03-25 17:30:38,361 PAT.test INFO: mAP: 53.8%
-2026-03-25 17:30:38,361 PAT.test INFO: CMC curve, Rank-1  :72.5%
-2026-03-25 17:30:38,361 PAT.test INFO: CMC curve, Rank-5  :89.8%
-2026-03-25 17:30:38,361 PAT.test INFO: CMC curve, Rank-10 :94.1%
-2026-03-25 17:30:38,361 PAT.test INFO: total inference time: 132.63
+2026-04-26 16:47:31,921 PAT INFO: Reproducibility Config: seed=1234 pythonhashseed=1234 cudnn.deterministic=True cudnn.benchmark=False
+2026-04-26 16:47:31,922 PAT INFO: Train Transform Config:
+  resize: size=[256, 128] interpolation=bicubic
+  horizontal_flip: on (p=0.5)
+  pad_crop: on (padding=10 mode=constant)
+  local_grayscale_transform: enabled=False p=0.5
+  color_jitter: on (p=0.5 brightness=0.15 contrast=0.15 saturation=0.1 hue=0.02)
+  autoaugment: off
+  augmix: off
+  random_patch: off
+  random_erasing: off
+  synthetic_extra: off (is_fake=False)
+  to_tensor: on
+  normalize: mean=[0.5, 0.5, 0.5] std=[0.5, 0.5, 0.5]
+2026-04-26 16:47:31,922 PAT INFO: Test Transform Config:
+  resize: size=[256, 128] interpolation=bicubic
+  local_grayscale_transform: enabled=False p=0.5 (not used in test pipeline)
+  to_tensor: on
+  normalize: mean=[0.5, 0.5, 0.5] std=[0.5, 0.5, 0.5]
+  tta: off
+2026-04-26 16:47:31,922 PAT INFO: UrbanElementsReID: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-26 16:47:31,938 PAT INFO: UrbanElementsReID: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-26 16:47:31,952 PAT INFO: UrbanElementsReID: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-26 16:47:32,044 PAT INFO: => Loaded UrbanElementsReID
+2026-04-26 16:47:32,045 PAT INFO:   ----------------------------------------
+2026-04-26 16:47:32,045 PAT INFO:   subset   | # ids | # images | # cameras
+2026-04-26 16:47:32,045 PAT INFO:   ----------------------------------------
+2026-04-26 16:47:32,045 PAT INFO:   train    |   742 |     5718 |         3
+2026-04-26 16:47:32,045 PAT INFO:   ----------------------------------------
+2026-04-26 16:47:32,068 PAT INFO: UrbanElementsReID: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-26 16:47:32,082 PAT INFO: UrbanElementsReID: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-26 16:47:32,095 PAT INFO: UrbanElementsReID: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-26 16:47:32,115 PAT INFO: => Loaded UrbanElementsReID
+2026-04-26 16:47:32,115 PAT INFO:   ----------------------------------------
+2026-04-26 16:47:32,115 PAT INFO:   subset   | # ids | # images | # cameras
+2026-04-26 16:47:32,115 PAT INFO:   ----------------------------------------
+2026-04-26 16:47:32,115 PAT INFO:   query    |   742 |     5718 |         3
+2026-04-26 16:47:32,115 PAT INFO:   gallery  |   742 |     5718 |         3
+2026-04-26 16:47:32,115 PAT INFO:   ----------------------------------------
+2026-04-26 16:47:32,769 PAT.train INFO: Number of parameter: 87.09M
+2026-04-26 16:47:32,994 PAT.train INFO: start training
+2026-04-26 16:47:32,994 PAT.train INFO: Gradient clipping: enabled=True max_norm=1.000
+2026-04-26 16:48:04,759 PAT.train ERROR: Gradient norm is non-finite: nan
+2026-04-26 16:48:04,760 PAT.train ERROR: Non-finite gradients detected at epoch 1 iteration 24
+2026-04-26 16:48:04,760 PAT.train ERROR: Batch sample image: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\image_train/007354.jpg
+2026-04-26 16:48:04,763 PAT.train ERROR: Target stats: min=32 max=710 unique=16
+2026-04-26 16:48:04,763 PAT.train ERROR: Grad base.cls_token shape=(1, 1, 768) dtype=float32 nan=768 inf=0 max_abs=0
+2026-04-26 16:48:04,763 PAT.train ERROR: Grad base.part_token1 shape=(1, 1, 768) dtype=float32 nan=768 inf=0 max_abs=0
+2026-04-26 16:48:04,763 PAT.train ERROR: Grad base.part_token2 shape=(1, 1, 768) dtype=float32 nan=768 inf=0 max_abs=0
+2026-04-26 16:48:04,763 PAT.train ERROR: Grad base.part_token3 shape=(1, 1, 768) dtype=float32 nan=768 inf=0 max_abs=0
+2026-04-26 16:48:04,763 PAT.train ERROR: Grad base.pos_embed shape=(1, 132, 768) dtype=float32 nan=101376 inf=0 max_abs=0
+2026-04-26 16:48:04,763 PAT.train ERROR: Grad base.blocks.0.norm1.weight shape=(768,) dtype=float32 nan=768 inf=0 max_abs=0
+2026-04-26 16:48:04,763 PAT.train ERROR: Grad base.blocks.0.norm1.bias shape=(768,) dtype=float32 nan=768 inf=0 max_abs=0
+2026-04-26 16:48:04,764 PAT.train ERROR: Grad base.blocks.0.part_attn.qkv.weight shape=(2304, 768) dtype=float32 nan=1769472 inf=0 max_abs=0
+2026-04-26 16:48:04,764 PAT.train ERROR: Grad base.blocks.0.part_attn.qkv.bias shape=(2304,) dtype=float32 nan=2304 inf=0 max_abs=0
+2026-04-26 16:48:04,764 PAT.train ERROR: Grad base.blocks.0.part_attn.proj.weight shape=(768, 768) dtype=float32 nan=589824 inf=0 max_abs=0
+2026-04-26 16:48:04,764 PAT.train WARNING: Skipping optimizer step at epoch 1 iteration 24 because gradients are non-finite.
+2026-04-26 16:48:20,934 PAT.train INFO: Epoch[1] Iteration[60/79] total_loss: 13.148, reid_loss: 7.907, pc_loss: 5.241, Acc: 0.001, Base Lr: 2.08e-04
+2026-04-26 16:48:28,772 PAT.train INFO: Epoch 1 done. Time per batch: 0.448[s] Speed: 142.8[samples/s]
+2026-04-26 16:48:28,772 PAT.train INFO: Primary validation dataset: UrbanElementsReID - Epoch: 1
+2026-04-26 16:48:28,772 PAT.test INFO: Enter inferencing
+2026-04-26 16:48:28,772 PAT.test INFO: Validation dataset: UrbanElementsReID
+2026-04-26 16:48:28,775 PAT.test INFO: TTA settings: enabled=False, flip=False, scales=[1.0], merge=mean, views_per_image=1
+2026-04-26 16:49:08,026 PAT.test INFO: Validation Results 
+2026-04-26 16:49:08,026 PAT.test INFO: mAP: 35.9%
+2026-04-26 16:49:08,026 PAT.test INFO: CMC curve, Rank-1  :48.9%
+2026-04-26 16:49:08,027 PAT.test INFO: CMC curve, Rank-5  :70.2%
+2026-04-26 16:49:08,027 PAT.test INFO: CMC curve, Rank-10 :78.8%
+2026-04-26 16:49:08,030 PAT.test INFO: Saved metrics to models/./model\metrics_UrbanElementsReID_none.json
+2026-04-26 16:49:08,030 PAT.test INFO: total inference time: 39.25
+2026-04-26 16:49:08,501 PAT.train INFO: =====best epoch: 1 mAP: 35.9%; saved models/./model\part_attention_vit_best.pth=====
+2026-04-26 16:49:35,557 PAT.train INFO: Epoch[2] Iteration[60/79] total_loss: 13.238, reid_loss: 7.856, pc_loss: 5.382, Acc: 0.004, Base Lr: 4.06e-04
+2026-04-26 16:49:43,677 PAT.train INFO: Epoch 2 done. Time per batch: 0.451[s] Speed: 142.0[samples/s]
+2026-04-26 16:49:43,678 PAT.train INFO: Primary validation dataset: UrbanElementsReID - Epoch: 2
+2026-04-26 16:49:43,678 PAT.test INFO: Enter inferencing
+2026-04-26 16:49:43,678 PAT.test INFO: Validation dataset: UrbanElementsReID
+2026-04-26 16:49:43,680 PAT.test INFO: TTA settings: enabled=False, flip=False, scales=[1.0], merge=mean, views_per_image=1
+2026-04-26 16:50:22,273 PAT.test INFO: Validation Results 
+2026-04-26 16:50:22,273 PAT.test INFO: mAP: 36.5%
+2026-04-26 16:50:22,273 PAT.test INFO: CMC curve, Rank-1  :49.6%
+2026-04-26 16:50:22,273 PAT.test INFO: CMC curve, Rank-5  :70.9%
+2026-04-26 16:50:22,273 PAT.test INFO: CMC curve, Rank-10 :79.7%
+2026-04-26 16:50:22,274 PAT.test INFO: Saved metrics to models/./model\metrics_UrbanElementsReID_none.json
+2026-04-26 16:50:22,275 PAT.test INFO: total inference time: 38.60
+2026-04-26 16:50:22,560 PAT.train INFO: =====best epoch: 2 mAP: 36.5%; saved models/./model\part_attention_vit_best.pth=====
+2026-04-26 16:50:23,318 PAT.train INFO: Number of parameter: 86.52M
+2026-04-26 16:50:23,482 PAT INFO: UrbanElementsReID: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-26 16:50:23,506 PAT INFO: UrbanElementsReID: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-26 16:50:23,525 PAT INFO: UrbanElementsReID: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-26 16:50:23,545 PAT INFO: => Loaded UrbanElementsReID
+2026-04-26 16:50:23,545 PAT INFO:   ----------------------------------------
+2026-04-26 16:50:23,545 PAT INFO:   subset   | # ids | # images | # cameras
+2026-04-26 16:50:23,545 PAT INFO:   ----------------------------------------
+2026-04-26 16:50:23,545 PAT INFO:   query    |   742 |     5718 |         3
+2026-04-26 16:50:23,545 PAT INFO:   gallery  |   742 |     5718 |         3
+2026-04-26 16:50:23,546 PAT INFO:   ----------------------------------------
+2026-04-26 16:50:23,547 PAT.train INFO: Final validation dataset: UrbanElementsReID
+2026-04-26 16:50:23,547 PAT.test INFO: Enter inferencing
+2026-04-26 16:50:23,547 PAT.test INFO: Validation dataset: UrbanElementsReID
+2026-04-26 16:50:23,596 PAT.test INFO: TTA settings: enabled=False, flip=False, scales=[1.0], merge=mean, views_per_image=1
+2026-04-26 16:51:24,169 PAT.test INFO: Validation Results 
+2026-04-26 16:51:24,170 PAT.test INFO: mAP: 36.6%
+2026-04-26 16:51:24,170 PAT.test INFO: CMC curve, Rank-1  :49.6%
+2026-04-26 16:51:24,170 PAT.test INFO: CMC curve, Rank-5  :71.1%
+2026-04-26 16:51:24,170 PAT.test INFO: CMC curve, Rank-10 :80.0%
+2026-04-26 16:51:24,171 PAT.test INFO: Saved metrics to models/./model\metrics_UrbanElementsReID_none.json
+2026-04-26 16:51:24,171 PAT.test INFO: total inference time: 60.57
+2026-04-26 16:51:24,173 PAT.train INFO: Keeping all checkpoint files in models/./model
