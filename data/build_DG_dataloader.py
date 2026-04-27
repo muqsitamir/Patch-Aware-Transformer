@@ -64,6 +64,25 @@ def _dataset_root(cfg, dataset_name=None):
     raise ValueError("Unsupported DATASETS.MODE '{}'. Expected 'challenge_only', 'external_only', or 'mixed_train'.".format(dataset_mode))
 
 
+def _test_dataset_root(cfg, dataset_name):
+    dataset_mode = str(getattr(cfg.DATASETS, "MODE", "challenge_only")).lower()
+    if dataset_mode != "mixed_train":
+        return _dataset_root(cfg, dataset_name)
+
+    test_root_mode = str(getattr(cfg.DATASETS, "MIXED_TRAIN_TEST_ROOT", "auto")).lower()
+    if test_root_mode == "challenge":
+        return cfg.DATASETS.ROOT_DIR
+    if test_root_mode == "external":
+        return _external_root(cfg)
+    if test_root_mode == "auto":
+        return _dataset_root(cfg, dataset_name)
+    raise ValueError(
+        "Unsupported DATASETS.MIXED_TRAIN_TEST_ROOT '{}'. Expected 'auto', 'challenge', or 'external'.".format(
+            test_root_mode
+        )
+    )
+
+
 def _default_class_cfg():
     return SimpleNamespace(
         TRAIN_CSV="train_classes.csv",
@@ -288,7 +307,7 @@ def build_reid_train_loader(cfg):
 
 def build_reid_test_loader(cfg, dataset_name, opt=None, flag_test=True, shuffle=False, only_gallery=False, only_query=False, eval_time=False):
     test_transforms = build_transforms(cfg, is_train=False)
-    _root = _dataset_root(cfg, dataset_name)
+    _root = _test_dataset_root(cfg, dataset_name)
     primary_root = _dataset_root(cfg)
     dataset_kwargs = _dataset_kwargs(cfg, dataset_name, _root, primary_root, combineall=False)
     if opt is None:

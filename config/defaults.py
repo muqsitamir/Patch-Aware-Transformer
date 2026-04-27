@@ -146,6 +146,9 @@ _C.DATASETS.ROOT_DIR = ('../data')
 # "mixed_train" trains on challenge ROOT_DIR + external EXTERNAL_ROOT.
 _C.DATASETS.MODE = 'challenge_only'
 _C.DATASETS.EXTERNAL_ROOT = ''
+# Validation/eval root override when DATASETS.MODE == "mixed_train".
+# Options: "auto" (legacy behavior), "challenge", "external".
+_C.DATASETS.MIXED_TRAIN_TEST_ROOT = 'auto'
 # combine both train and test sets
 _C.DATASETS.COMBINEALL = False
 
