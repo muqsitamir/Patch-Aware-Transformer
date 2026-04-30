@@ -507,15 +507,16 @@ def do_inference(cfg,
                  val_loader,
                  num_query,
                  dataset_name=None):
-    device = "cuda"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger = logging.getLogger("PAT.test")
     logger.info("Enter inferencing")
     logger.info("Validation dataset: {}".format(dataset_name))
-    if device:
-        if torch.cuda.device_count() > 1:
-            print('Using {} GPUs for inference'.format(torch.cuda.device_count()))
-            model = nn.DataParallel(model)
-        model.to(device)
+    if device.type == "cuda" and torch.cuda.device_count() > 1:
+        print('Using {} GPUs for inference'.format(torch.cuda.device_count()))
+        model = nn.DataParallel(model)
+    else:
+        logger.warning("CUDA unavailable; using CPU for inference.")
+    model.to(device)
 
     model.eval()
     if should_skip_eval_if_dummy_ids(cfg, val_loader, num_query, dataset_name):

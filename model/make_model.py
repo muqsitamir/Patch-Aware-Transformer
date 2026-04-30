@@ -185,7 +185,7 @@ class Backbone(nn.Module):
                 return global_feat
 
     def load_param(self, trained_path):
-        param_dict = torch.load(trained_path)
+        param_dict = torch.load(trained_path, map_location='cpu')
         if 'state_dict' in param_dict:
             param_dict = param_dict['state_dict']
         model_dict = self.state_dict()
@@ -276,7 +276,7 @@ class build_vit(nn.Module):
             return output_feat
 
     def load_param(self, trained_path):
-        param_dict = torch.load(trained_path)
+        param_dict = torch.load(trained_path, map_location='cpu')
         model_dict = self.state_dict()
         loaded_semantic_head = not self.class_aware_enabled
         for i in param_dict:
@@ -376,7 +376,7 @@ class build_part_attention_vit(nn.Module):
             return output_feat
 
     def load_param(self, trained_path):
-        param_dict = torch.load(trained_path)
+        param_dict = torch.load(trained_path, map_location='cpu')
         model_dict = self.state_dict()
         loaded_semantic_head = not self.class_aware_enabled
         for i in param_dict:

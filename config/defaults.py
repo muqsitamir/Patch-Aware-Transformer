@@ -131,6 +131,13 @@ _C.INPUT.LGT.PROB = 0.2
 _C.INPUT.RPT = CN()
 _C.INPUT.RPT.ENABLED = False
 _C.INPUT.RPT.PROB = 0.5
+_C.INPUT.RPT.POOL_CAPACITY = 50000
+_C.INPUT.RPT.MIN_SAMPLE_SIZE = 100
+_C.INPUT.RPT.MIN_AREA = 0.01
+_C.INPUT.RPT.MAX_AREA = 0.5
+_C.INPUT.RPT.MIN_RATIO = 0.1
+_C.INPUT.RPT.ROTATE_PROB = 0.5
+_C.INPUT.RPT.FLIP_PROB = 0.5
 
 # -----------------------------------------------------------------------------
 # Dataset
@@ -185,12 +192,18 @@ _C.SOLVER.MAX_EPOCHS = 100
 _C.SOLVER.BASE_LR = 3e-4
 # Whether using larger learning rate for fc layer
 _C.SOLVER.LARGE_FC_LR = False
+_C.SOLVER.HEAD_LR_FACTOR = 1.0
 # Factor of learning bias
 _C.SOLVER.BIAS_LR_FACTOR = 1
 # Factor of learning bias
 _C.SOLVER.SEED = 1234
 # Momentum
 _C.SOLVER.MOMENTUM = 0.9
+_C.SOLVER.OPT_BETAS = (0.9, 0.999)
+_C.SOLVER.OPT_EPS = 1e-8
+_C.SOLVER.ZERO_WD_1D = False
+_C.SOLVER.LAYER_DECAY_ENABLED = False
+_C.SOLVER.LAYER_DECAY = 0.75
 # Optional gradient clipping for mixed-precision stability.
 _C.SOLVER.GRAD_CLIP_ENABLED = False
 _C.SOLVER.GRAD_CLIP_NORM = 1.0

@@ -43,41 +43,75 @@ def read_prediction_csv(csv_path):
     return predictions
 
 
+def read_prediction_txt(txt_path):
+    """Read an ordered track TXT where each row aligns with query CSV order."""
+    if not os.path.exists(txt_path):
+        raise FileNotFoundError(f"Prediction TXT not found: {txt_path}")
+
+    rows = []
+    with open(txt_path) as txt_file:
+        for line in txt_file:
+            line = line.strip()
+            if not line:
+                continue
+            rows.append([int(i) for i in line.split()])
+    return rows
+
+
 # --- CONFIGURATION ---
 parser = argparse.ArgumentParser(description="ReID Eval CSV Final")
 parser.add_argument("--track", default="submission.csv", help="CSV file containing predictions")
+parser.add_argument("--track-txt", default=None, help="Optional ordered TXT predictions aligned with query CSV order")
 parser.add_argument("--path", default="./data/", help="Folder containing query.csv and test.csv")
+parser.add_argument("--query-csv", default=None, help="Optional query CSV override")
+parser.add_argument("--gallery-csv", default=None, help="Optional gallery/test CSV override")
 args = parser.parse_args()
+
+query_csv = args.query_csv or os.path.join(args.path, 'query.csv')
+gallery_csv = args.gallery_csv or os.path.join(args.path, 'test.csv')
 
 # 1. Load Data
 # Gallery: IDs needed in a list ordered by image index
-gallery_dict, gallery_names = read_csv_gt(os.path.join(args.path, 'test.csv'))
+gallery_dict, gallery_names = read_csv_gt(gallery_csv)
 
 # Sort gallery IDs so that index '1' corresponds to the image with the lowest numerical name
 # (Or according to the order in which the gallery was generated)
 sorted_gallery_names = sorted(gallery_names, key=lambda x: int(x.split('.')[0]))
 id_gallery = np.array([gallery_dict[name] for name in sorted_gallery_names])
 
-query_dict, query_names = read_csv_gt(os.path.join(args.path, 'query.csv'))
-preds_dict = read_prediction_csv(args.track)
+query_dict, query_names = read_csv_gt(query_csv)
+preds_dict = None
+preds_list = None
+if args.track_txt:
+    preds_list = read_prediction_txt(args.track_txt)
+    if len(preds_list) != len(query_names):
+        raise ValueError(
+            f"Prediction TXT row count {len(preds_list)} does not match query count {len(query_names)}"
+        )
+else:
+    preds_dict = read_prediction_csv(args.track)
 
 # --- EVALUATION ---
 AP = 0.0
 total_queries = 0
 # Determine prediction size (e.g., 100)
-sample_key = next(iter(preds_dict))
-CMC = np.zeros(len(preds_dict[sample_key]))
+if preds_list is not None:
+    CMC = np.zeros(len(preds_list[0]))
+else:
+    sample_key = next(iter(preds_dict))
+    CMC = np.zeros(len(preds_dict[sample_key]))
 
 print(f"Evaluating {len(query_names)} queries...")
 
-for q_name in query_names:
-    if q_name not in preds_dict:
-        print(f"Warning: {q_name} is missing from the prediction file. Skipping...")
-        continue
-
+for query_idx, q_name in enumerate(query_names):
     query_id = query_dict[q_name]
-    # Get predicted indices (1-based) and convert to 0-based
-    pred_indices = np.array(preds_dict[q_name]) - 1
+    if preds_list is not None:
+        pred_indices = np.array(preds_list[query_idx]) - 1
+    else:
+        if q_name not in preds_dict:
+            print(f"Warning: {q_name} is missing from the prediction file. Skipping...")
+            continue
+        pred_indices = np.array(preds_dict[q_name]) - 1
 
     # Actual IDs from the gallery according to our prediction
     sortID = id_gallery[pred_indices]
