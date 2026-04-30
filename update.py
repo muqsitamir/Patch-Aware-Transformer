@@ -33,6 +33,7 @@ from utils.group_rerank import (
     resolve_query_gallery_classes,
 )
 from utils.inference_postprocess import (
+    apply_class_score_bias,
     apply_query_expansion,
     build_class_postprocess_indices,
     class_postprocess_stats,
@@ -42,6 +43,13 @@ from utils.inference_postprocess import (
 SUBMISSION_TOPK = 100
 
 #from torch.backends import cudnn
+
+
+def inference_device(logger=None):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if logger is not None and device.type != "cuda":
+        logger.warning("CUDA unavailable; using CPU for feature extraction.")
+    return device
 
 def extract_feature(model, dataloaders, num_query, cfg):
     features = []
@@ -53,6 +61,8 @@ def extract_feature(model, dataloaders, num_query, cfg):
     use_metadata_classes = use_metadata_classes_for_retrieval(cfg)
     logger = logging.getLogger("PAT")
     log_tta_settings(logger, cfg)
+    device = inference_device(logger)
+    model.to(device)
     model.eval()
 
     for data in dataloaders:
@@ -60,7 +70,7 @@ def extract_feature(model, dataloaders, num_query, cfg):
         #obtain values form dict data
         n, c, h, w = img.size()
         count += n
-        input_img = img.cuda()
+        input_img = img.to(device)
         if use_class_aware and not use_metadata_classes:
             ff, class_logits = extract_tta_features(
                 model, input_img, cfg, return_class_logits=True
@@ -280,6 +290,7 @@ if __name__ == "__main__":
     q_g_dist = np.dot(qf, np.transpose(gf))
     q_q_dist = np.dot(qf, np.transpose(qf))
     g_g_dist = np.dot(gf, np.transpose(gf))
+    use_rerank = bool(getattr(cfg.TEST, "RE_RANKING", False))
 
     class_postprocess = str(cfg.TEST.CLASS_POSTPROCESS).lower()
     class_score_mode = str(cfg.TEST.CLASS_SCORE_MODE).lower()
@@ -288,15 +299,30 @@ if __name__ == "__main__":
     postprocess_mode = class_postprocess
     if class_postprocess != "off":
         log_class_postprocess_stats(logger, q_classes, g_classes, SUBMISSION_TOPK)
-    if class_postprocess == "penalty_additive" and class_score_mode == "additive":
+    if use_rerank and class_postprocess == "penalty_additive" and class_score_mode == "additive":
         penalty_matrix = class_distance_penalty_matrix(q_classes, g_classes, mismatch_penalty)
         # The legacy additive mode biases the k-reciprocal re-ranking distance
         # directly. After that, argsort preserves the final re-ranked order.
         postprocess_mode = "off"
 
-    re_rank_dist = re_ranking(q_g_dist, q_q_dist, g_g_dist, q_g_penalty=penalty_matrix)
+    if use_rerank:
+        final_dist = re_ranking(q_g_dist, q_q_dist, g_g_dist, q_g_penalty=penalty_matrix)
+    else:
+        final_dist = 1.0 - q_g_dist
+        logger.info("Submission reranking disabled; using cosine-distance ranking.")
+        if class_postprocess == "penalty_additive" and class_score_mode == "additive":
+            final_dist = apply_class_score_bias(
+                final_dist,
+                q_classes,
+                g_classes,
+                penalty=mismatch_penalty,
+                score_mode=class_score_mode,
+                scale=cfg.TEST.CLASS_SCALE,
+            )
+            postprocess_mode = "off"
+
     if group_rerank_mode(cfg) != "none":
-        base_group_dist = np.asarray(re_rank_dist, dtype=np.float32).copy()
+        base_group_dist = np.asarray(final_dist, dtype=np.float32).copy()
         combined_pred_classes = None
         if q_pred_classes is not None and g_pred_classes is not None:
             combined_pred_classes = np.concatenate([q_pred_classes, g_pred_classes])
@@ -308,8 +334,8 @@ if __name__ == "__main__":
         )
         if group_q_classes is None or group_g_classes is None:
             group_q_classes, group_g_classes = q_classes, g_classes
-        re_rank_dist, group_info = apply_group_rerank_to_distmat(
-            re_rank_dist,
+        final_dist, group_info = apply_group_rerank_to_distmat(
+            final_dist,
             group_q_classes,
             group_g_classes,
             cfg,
@@ -319,7 +345,7 @@ if __name__ == "__main__":
         group_info["resolved_class_source"] = group_class_source
         group_examples = rank_change_examples(
             base_group_dist,
-            re_rank_dist,
+            final_dist,
             q_img_paths + g_img_paths,
             len(q_img_paths),
             group_q_classes,
@@ -330,7 +356,7 @@ if __name__ == "__main__":
         log_group_rerank(logger, group_info, group_examples)
 
     indices = build_class_postprocess_indices(
-        re_rank_dist,
+        final_dist,
         q_classes,
         g_classes,
         mode=postprocess_mode,

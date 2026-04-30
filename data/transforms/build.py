@@ -86,7 +86,19 @@ def describe_train_transforms(cfg, is_fake=False):
         ))),
         "  autoaugment: {}".format(_format_toggle(cfg.INPUT.DO_AUTOAUG, "schedule_steps={}".format(cfg.SOLVER.MAX_EPOCHS))),
         "  augmix: {}".format(_format_toggle(cfg.INPUT.DO_AUGMIX, "default_params")),
-        "  random_patch: {}".format(_format_toggle(cfg.INPUT.RPT.ENABLED, "p={}".format(cfg.INPUT.RPT.PROB))),
+        "  random_patch: {}".format(_format_toggle(
+            cfg.INPUT.RPT.ENABLED,
+            "p={} area=[{}, {}] min_ratio={} pool_capacity={} min_sample_size={} rotate_p={} flip_p={}".format(
+                cfg.INPUT.RPT.PROB,
+                cfg.INPUT.RPT.MIN_AREA,
+                cfg.INPUT.RPT.MAX_AREA,
+                cfg.INPUT.RPT.MIN_RATIO,
+                cfg.INPUT.RPT.POOL_CAPACITY,
+                cfg.INPUT.RPT.MIN_SAMPLE_SIZE,
+                cfg.INPUT.RPT.ROTATE_PROB,
+                cfg.INPUT.RPT.FLIP_PROB,
+            ),
+        )),
         "  random_erasing: {}".format(_format_toggle(cfg.INPUT.REA.ENABLED, "p={} mode=pixel max_count=1 device=cpu".format(cfg.INPUT.REA.PROB))),
         "  synthetic_extra: {}".format("on ({})".format(_synthetic_flag(cfg)) if is_fake else "off (is_fake=False)"),
         "  to_tensor: on",
@@ -153,6 +165,13 @@ def build_transforms(cfg, is_train=True, is_fake=False):
         # random patch
         do_rpt = cfg.INPUT.RPT.ENABLED
         rpt_prob = cfg.INPUT.RPT.PROB
+        rpt_pool_capacity = cfg.INPUT.RPT.POOL_CAPACITY
+        rpt_min_sample_size = cfg.INPUT.RPT.MIN_SAMPLE_SIZE
+        rpt_min_area = cfg.INPUT.RPT.MIN_AREA
+        rpt_max_area = cfg.INPUT.RPT.MAX_AREA
+        rpt_min_ratio = cfg.INPUT.RPT.MIN_RATIO
+        rpt_rotate_prob = cfg.INPUT.RPT.ROTATE_PROB
+        rpt_flip_prob = cfg.INPUT.RPT.FLIP_PROB
 
         if do_autoaug:
             res.append(AutoAugment(total_iter))
@@ -171,7 +190,18 @@ def build_transforms(cfg, is_train=True, is_fake=False):
         # if do_rea:
         #     res.append(RandomErasing(probability=rea_prob, mean=rea_mean, sh=1/3))
         if do_rpt:
-            res.append(RandomPatch(prob_happen=rpt_prob))
+            res.append(
+                RandomPatch(
+                    prob_happen=rpt_prob,
+                    pool_capacity=rpt_pool_capacity,
+                    min_sample_size=rpt_min_sample_size,
+                    patch_min_area=rpt_min_area,
+                    patch_max_area=rpt_max_area,
+                    patch_min_ratio=rpt_min_ratio,
+                    prob_rotate=rpt_rotate_prob,
+                    prob_flip_leftright=rpt_flip_prob,
+                )
+            )
         if is_fake:
             synth_flag = _synthetic_flag(cfg)
             if synth_flag == 'jitter':

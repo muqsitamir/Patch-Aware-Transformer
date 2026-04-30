@@ -47,7 +47,12 @@ def build_loss(cfg, num_classes):
 
     if sampler == 'softmax': # softmax loss only
         def loss_func(score, feat, target):
-            return F.cross_entropy(score, target)
+            loss = F.cross_entropy(score, target)
+            loss_func.last_components = {
+                'id_loss': loss.detach(),
+                'combined': loss.detach(),
+            }
+            return loss
 
     # softmax & triplet
     elif sampler in ('softmax_triplet', 'GS'):
@@ -63,17 +68,29 @@ def build_loss(cfg, num_classes):
 
                 TRI_LOSS = triplet(feat, target)[0]
                 # DOMAIN_LOSS = xent(domains, t_domains)
-                return cfg.MODEL.ID_LOSS_WEIGHT * ID_LOSS + \
+                loss = cfg.MODEL.ID_LOSS_WEIGHT * ID_LOSS + \
                                cfg.MODEL.TRIPLET_LOSS_WEIGHT * TRI_LOSS
+                loss_func.last_components = {
+                    'id_loss': ID_LOSS.detach(),
+                    'tri_loss': TRI_LOSS.detach(),
+                    'combined': loss.detach(),
+                }
+                return loss
             elif cfg.MODEL.METRIC_LOSS_TYPE == 'triplet_center':
                 if cfg.MODEL.IF_LABELSMOOTH == 'on':
-                    return xent(score, target) + \
-                        triplet(feat, target)[0] + \
-                        cfg.SOLVER.CENTER_LOSS_WEIGHT * center_criterion(feat, target)
+                    id_loss = xent(score, target)
                 else:
-                    return F.cross_entropy(score, target) + \
-                            triplet(feat, target)[0] + \
-                            cfg.SOLVER.CENTER_LOSS_WEIGHT * center_criterion(feat, target)
+                    id_loss = F.cross_entropy(score, target)
+                tri_loss = triplet(feat, target)[0]
+                center_loss = cfg.SOLVER.CENTER_LOSS_WEIGHT * center_criterion(feat, target)
+                loss = id_loss + tri_loss + center_loss
+                loss_func.last_components = {
+                    'id_loss': id_loss.detach(),
+                    'tri_loss': tri_loss.detach(),
+                    'center_loss': center_loss.detach(),
+                    'combined': loss.detach(),
+                }
+                return loss
             else:
                 print('expected METRIC_LOSS_TYPE with center should be center, triplet_center'
                     'but got {}'.format(cfg.MODEL.METRIC_LOSS_TYPE))
@@ -81,4 +98,5 @@ def build_loss(cfg, num_classes):
     else:
         print('expected sampler should be softmax, triplet, softmax_triplet or softmax_triplet_center'
               'but got {}'.format(cfg.DATALOADER.SAMPLER))
+    loss_func.last_components = {}
     return loss_func, center_criterion
