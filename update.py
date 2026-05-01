@@ -369,19 +369,61 @@ if __name__ == "__main__":
 
     m, n = indices.shape
     # # print('m: {}  n: {}'.format(m, n))
+    gallery_names = [os.path.basename(path) for path in g_img_paths]
+    gallery_indexes = []
+    for gallery_name in gallery_names:
+        stem, _ = os.path.splitext(gallery_name)
+        try:
+            gallery_indexes.append(int(stem))
+        except ValueError:
+            gallery_indexes = []
+            break
+    if gallery_indexes:
+        gallery_indexes = np.asarray(gallery_indexes, dtype=np.int64)
+        sequential_gallery_indexes = np.arange(1, len(gallery_indexes) + 1, dtype=np.int64)
+        if sorted(gallery_indexes.tolist()) == sequential_gallery_indexes.tolist():
+            if not np.array_equal(gallery_indexes, sequential_gallery_indexes):
+                logger.warning(
+                    "Gallery filenames are not aligned with loader positions; "
+                    "writing numeric gallery filename indexes in submission."
+                )
+        else:
+            logger.warning(
+                "Gallery filenames are numeric but not a contiguous 1..N index set; "
+                "writing loader-position indexes instead."
+            )
+            gallery_indexes = sequential_gallery_indexes
+    else:
+        gallery_indexes = np.arange(1, len(g_img_paths) + 1, dtype=np.int64)
+
+    submission_indices = gallery_indexes[indices]
+
     with open(args.track, 'wb') as f_w:
         for i in range(m):
-            write_line = indices[i] + 1
+            write_line = submission_indices[i]
             write_line = ' '.join(map(str, write_line.tolist())) + '\n'
             f_w.write(write_line.encode())
 
 
-    lista_nombres = ["{:06d}.jpg".format(i) for i in range(1, len(indices) + 1)]
     output_path = args.track.split(".txt")[0] + "_submission.csv"
 
     with open(output_path, 'w', newline='') as archivo_csv:
         csv_writter = csv.writer(archivo_csv)
         csv_writter.writerow(['imageName', 'Corresponding Indexes'])
-        for numero, track in zip(lista_nombres, indices):
-            track_str = ' '.join(map(str, track + 1))
+        query_names = [os.path.basename(path) for path in q_img_paths]
+        if len(query_names) != len(indices):
+            raise ValueError(
+                "Query filename count {} does not match prediction row count {}".format(
+                    len(query_names), len(indices)
+                )
+            )
+        sequential_query_names = ["{:06d}.jpg".format(i) for i in range(1, len(indices) + 1)]
+        if query_names != sequential_query_names:
+            logger.warning(
+                "Submission query filenames are not the simple 000001.jpg sequence; "
+                "writing actual query.csv filenames to avoid row/name misalignment."
+            )
+        for numero, track in zip(query_names, submission_indices):
+            track_str = ' '.join(map(str, track))
             csv_writter.writerow([numero, track_str])
+    logger.info("Wrote submission CSV to {}".format(output_path))
