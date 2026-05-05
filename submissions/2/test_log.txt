@@ -1,6 +1,6 @@
-2026-04-29 10:42:12,739 PAT INFO: Namespace(config_file='config/UrbanElementsReID_test.yml', opts=[], track='submission.txt')
-2026-04-29 10:42:12,740 PAT INFO: Loaded configuration file config/UrbanElementsReID_test.yml
-2026-04-29 10:42:12,740 PAT INFO: 
+2026-04-26 03:15:45,496 PAT INFO: Namespace(config_file='config/UrbanElementsReID_test.yml', opts=[], track='submission.txt')
+2026-04-26 03:15:45,496 PAT INFO: Loaded configuration file config/UrbanElementsReID_test.yml
+2026-04-26 03:15:45,496 PAT INFO: 
 MODEL:
   PRETRAIN_CHOICE: 'finetune'
   PRETRAIN_PATH: 'C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\part_attention_vit_60.pth'
@@ -13,25 +13,29 @@ MODEL:
   TRANSFORMER_TYPE: 'vit_base_patch16_224_TransReID'
   STRIDE_SIZE: [16, 16]
   CLASS_AWARE:
-    ENABLED: False
+    ENABLED: True        # enables GT-class-based retrieval at inference
     NUM_CLASSES: 0
     LOSS_WEIGHT: 1.0
-    DISTANCE_PENALTY: 0.3
-    TRAIN_CSV: "train_classes_filtered.csv"
+    DISTANCE_PENALTY: 0.0  # not used in strict_same_class_backfill mode
+    TRAIN_CSV: "train_classes.csv"
     QUERY_CSV: "query_classes.csv"
     TEST_CSV: "test_classes.csv"
-    RETRIEVAL_SOURCE: "predicted"
+    RETRIEVAL_SOURCE: "metadata"  # use GT class labels from CSVs, not model predictions
 
 INPUT:
-  SIZE_TRAIN: [256,128]
-  SIZE_TEST: [256,128]
+  SIZE_TRAIN: [224, 224]
+  SIZE_TEST: [224, 224]
   REA:
     ENABLED: False
   PIXEL_MEAN: [0.5, 0.5, 0.5]
   PIXEL_STD: [0.5, 0.5, 0.5]
-  LGT: # Local Grayscale Transfomation
+  LGT:
     DO_LGT: False
-    PROB: 0.5
+    PROB: 0.0
+  CJ:
+    ENABLED: False       # no augmentation at inference
+  PER_CLASS_GEOMETRY:
+    ENABLED: True
 
 DATASETS:
   TRAIN: ('UrbanElementsReID',)
@@ -41,34 +45,34 @@ DATASETS:
 DATALOADER:
   SAMPLER: 'softmax_triplet'
   NUM_INSTANCE: 4
-  NUM_WORKERS: 0
+  NUM_WORKERS: 8
 
 SOLVER:
   OPTIMIZER_NAME: 'SGD'
   MAX_EPOCHS: 60
-  BASE_LR: 0.001 # 0.0004 for msmt
-  WARMUP_EPOCHS: 5
-  IMS_PER_BATCH: 64
+  BASE_LR: 0.001
+  IMS_PER_BATCH: 48
   WARMUP_METHOD: 'linear'
+  WARMUP_EPOCHS: 5
   LARGE_FC_LR: False
   CHECKPOINT_PERIOD: 5
-  LOG_PERIOD: 10
-  EVAL_PERIOD: 10
-  WEIGHT_DECAY:  1e-4
+  LOG_PERIOD: 60
+  EVAL_PERIOD: 5
+  WEIGHT_DECAY: 1e-4
   WEIGHT_DECAY_BIAS: 1e-4
   BIAS_LR_FACTOR: 2
   SEED: 1234
 
 TEST:
   EVAL: True
-  IMS_PER_BATCH: 64
+  IMS_PER_BATCH: 128
   RE_RANKING: False
-  WEIGHT: "models/model/part_attention_vit_60.pth"
+  WEIGHT: "./models/model/part_attention_vit_20.pth"
   NECK_FEAT: 'before'
   FEAT_NORM: True
-  CLASS_POSTPROCESS: "off"
+  CLASS_POSTPROCESS: "strict_same_class_backfill"
   CLASS_TOPK: 100
-  CLASS_MISMATCH_PENALTY: 0.3
+  CLASS_MISMATCH_PENALTY: 0.0
   CLASS_SCORE_MODE: "additive"
   CLASS_SCALE: 1.2
   QUERY_EXPANSION: False
@@ -78,20 +82,19 @@ TEST:
   FEAT_Q_PATH: "./qf.npy"
   FEAT_G_PATH: "./gf.npy"
 
-LOG_ROOT: 'models/' # root of log file
+LOG_ROOT: 'models/'
 TB_LOG_ROOT: './tb_log/'
 LOG_NAME: './model'
 
-2026-04-29 10:42:12,740 PAT INFO: Running with config:
+2026-04-26 03:15:45,496 PAT INFO: Running with config:
 DATALOADER:
   CAMERA_TO_DOMAIN: False
   DELETE_REM: False
   DROP_LAST: False
   INDIVIDUAL: False
-  MIXED_EXTERNAL_RATIO: 0.2
   NAIVE_WAY: True
   NUM_INSTANCE: 4
-  NUM_WORKERS: 0
+  NUM_WORKERS: 8
   SAMPLER: softmax_triplet
 DATASETS:
   COMBINEALL: False
@@ -105,8 +108,8 @@ INPUT:
     BRIGHTNESS: 0.15
     CONTRAST: 0.15
     ENABLED: False
-    HUE: 0.02
-    PROB: 0.5
+    HUE: 0.1
+    PROB: 1.0
     SATURATION: 0.1
   DO_AUGMIX: False
   DO_AUTOAUG: False
@@ -115,9 +118,14 @@ INPUT:
   FLIP_PROB: 0.5
   LGT:
     DO_LGT: False
-    PROB: 0.5
+    PROB: 0.0
   PADDING: 10
   PADDING_MODE: constant
+  PER_CLASS_GEOMETRY:
+    CROSSWALK_SIZE: [128, 384]
+    DEFAULT_SIZE: [224, 224]
+    ENABLED: True
+    WIDE_CLASSES: ['Crosswalk', 'crosswalk']
   PIXEL_MEAN: [0.5, 0.5, 0.5]
   PIXEL_STD: [0.5, 0.5, 0.5]
   REA:
@@ -127,21 +135,21 @@ INPUT:
   RPT:
     ENABLED: False
     PROB: 0.5
-  SIZE_TEST: [256, 128]
-  SIZE_TRAIN: [256, 128]
+  SIZE_TEST: [224, 224]
+  SIZE_TRAIN: [224, 224]
 LOG_NAME: ./model
 LOG_ROOT: models/
 MODEL:
   ATT_DROP_RATE: 0.0
   CLASS_AWARE:
-    DISTANCE_PENALTY: 0.3
-    ENABLED: False
+    DISTANCE_PENALTY: 0.0
+    ENABLED: True
     LOSS_WEIGHT: 1.0
     NUM_CLASSES: 0
     QUERY_CSV: query_classes.csv
-    RETRIEVAL_SOURCE: predicted
+    RETRIEVAL_SOURCE: metadata
     TEST_CSV: test_classes.csv
-    TRAIN_CSV: train_classes_filtered.csv
+    TRAIN_CSV: train_classes.csv
   CLUSTER_K: 10
   COS_LAYER: False
   DEVICE: cuda
@@ -150,15 +158,6 @@ MODEL:
   DROP_OUT: 0.0
   DROP_PATH: 0.1
   FINETUNE_PATH: 
-  FOREGROUND_ATTN:
-    BIAS_VALUE: -10000.0
-    BOUNDARY_BLUR: 5.0
-    CACHE_DIR: 
-    CLAHE_CLIP: 3.0
-    ENABLED: False
-    FALLBACK_CLASSES: ['crosswalk']
-    MIN_SIDE_FOR_DECOMP: 24
-    NUM_REGIONS: 3
   FREEZE_PATCH_EMBED: True
   ID_LOSS_TYPE: softmax
   ID_LOSS_WEIGHT: 1.0
@@ -190,13 +189,11 @@ SOLVER:
   COSINE_MARGIN: 0.5
   COSINE_SCALE: 30
   DELETE_OLD_CHECKPOINTS: False
-  EVAL_PERIOD: 10
+  EVAL_PERIOD: 5
   GAMMA: 0.1
-  GRAD_CLIP_ENABLED: False
-  GRAD_CLIP_NORM: 1.0
-  IMS_PER_BATCH: 64
+  IMS_PER_BATCH: 48
   LARGE_FC_LR: False
-  LOG_PERIOD: 10
+  LOG_PERIOD: 60
   MARGIN: 0.3
   MAX_EPOCHS: 60
   MOMENTUM: 0.9
@@ -210,10 +207,8 @@ SOLVER:
   WEIGHT_DECAY_BIAS: 0.0001
 TB_LOG_ROOT: ./tb_log/
 TEST:
-  CLASS_GROUPS: []
-  CLASS_GROUP_FILE: 
-  CLASS_MISMATCH_PENALTY: 0.3
-  CLASS_POSTPROCESS: off
+  CLASS_MISMATCH_PENALTY: 0.0
+  CLASS_POSTPROCESS: strict_same_class_backfill
   CLASS_SCALE: 1.2
   CLASS_SCORE_MODE: additive
   CLASS_TOPK: 100
@@ -222,38 +217,28 @@ TEST:
   FEAT_G_PATH: ./gf.npy
   FEAT_NORM: True
   FEAT_Q_PATH: ./qf.npy
-  GALLERY_GROUP_CSV: 
-  GROUP_BONUS_MODE: hard
-  GROUP_CLASS_SOURCE: auto
-  GROUP_RERANK_LAMBDA: 0.2
-  IMS_PER_BATCH: 64
-  LOG_RANK_CHANGES: 5
-  METRICS_PATH: 
+  IMS_PER_BATCH: 128
   NECK_FEAT: before
   QE_ALPHA: 1.0
   QE_TOPK: 5
   QUERY_EXPANSION: False
-  QUERY_GROUP_CSV: 
-  RERANK_MODE: none
   RE_RANKING: False
   SAVE_FEATURES: True
   SKIP_EVAL_IF_DUMMY_IDS: True
-  TTA_ENABLED: False
-  TTA_FLIP: True
-  TTA_MERGE: mean
-  TTA_SCALES: [1.0]
-  WEIGHT: models/model/part_attention_vit_60.pth
-2026-04-29 10:42:13,370 PAT.train INFO: Number of parameter: 86.52M
-2026-04-29 10:42:13,644 PAT INFO: UrbanElementsReID_test: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
-2026-04-29 10:42:13,681 PAT INFO: => Loaded UrbanElementsReID_test
-2026-04-29 10:42:13,682 PAT INFO:   ----------------------------------------
-2026-04-29 10:42:13,682 PAT INFO:   subset   | # ids | # images | # cameras
-2026-04-29 10:42:13,682 PAT INFO:   ----------------------------------------
-2026-04-29 10:42:13,682 PAT INFO:   query    |     1 |      928 |         1
-2026-04-29 10:42:13,682 PAT INFO:   gallery  |     1 |     2844 |         3
-2026-04-29 10:42:13,682 PAT INFO:   ----------------------------------------
-2026-04-29 10:42:13,684 PAT.test INFO: Enter inferencing
-2026-04-29 10:42:13,684 PAT.test INFO: Validation dataset: UrbanElementsReID_test
-2026-04-29 10:42:13,728 PAT.test WARNING: Skipping metric evaluation for UrbanElementsReID_test because query/gallery IDs are dummy or unavailable; mAP/CMC would be misleading and will not be logged. Submission generation is unaffected.
-2026-04-29 10:42:13,728 PAT INFO: TTA settings: enabled=False, flip=False, scales=[1.0], merge=mean, views_per_image=1
-2026-04-29 10:42:21,083 PAT INFO: Submission class source: csv
+  WEIGHT: ./models/model/part_attention_vit_20.pth
+2026-04-26 03:15:46,287 PAT.train INFO: Number of parameter: 86.58M
+2026-04-26 03:15:46,597 PAT.dataset INFO: UrbanElementsReID_test: loading training CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train.csv
+2026-04-26 03:15:46,739 PAT INFO: => Loaded UrbanElementsReID_test
+2026-04-26 03:15:46,739 PAT INFO:   ----------------------------------------
+2026-04-26 03:15:46,739 PAT INFO:   subset   | # ids | # images | # cameras
+2026-04-26 03:15:46,739 PAT INFO:   ----------------------------------------
+2026-04-26 03:15:46,739 PAT INFO:   query    |     1 |      928 |         1
+2026-04-26 03:15:46,739 PAT INFO:   gallery  |     1 |     2844 |         3
+2026-04-26 03:15:46,740 PAT INFO:   ----------------------------------------
+2026-04-26 03:15:46,742 PAT.test INFO: Enter inferencing
+2026-04-26 03:15:46,780 PAT.test WARNING: Skipping metric evaluation for UrbanElementsReID_test because query/gallery IDs are dummy or unavailable; mAP/CMC would be misleading and will not be logged. Submission generation is unaffected.
+2026-04-26 03:16:38,851 PAT INFO: Submission class source: csv
+2026-04-26 03:16:38,938 PAT INFO: Class postprocess stats: gallery images per class: container=261, crosswalk=354, rubbishbins=393, trafficsignal=1836
+2026-04-26 03:16:38,938 PAT INFO: Class postprocess stats: same-class gallery items per query class: container=261, crosswalk=354, rubbishbins=393, trafficsignal=1836
+2026-04-26 03:16:38,939 PAT INFO: Class postprocess stats: same-class gallery items across queries: min=261 max=1836 avg=1270.41
+2026-04-26 03:16:38,939 PAT INFO: Class postprocess stats: queries requiring backfill (< 100 same-class gallery items): 0/928

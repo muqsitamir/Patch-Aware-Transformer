@@ -1,6 +1,16 @@
 MODEL:
-  PRETRAIN_CHOICE: 'finetune'
-  PRETRAIN_PATH: 'C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\part_attention_vit_60.pth'
+  PC_LOSS: False           # must be False — incompatible with foreground attention
+  FOREGROUND_ATTN:
+    ENABLED: True
+    CACHE_DIR: 'C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\_foreground_masks'
+    NUM_REGIONS: 3
+    CLAHE_CLIP: 3.0
+    BOUNDARY_BLUR: 7.0
+    MIN_SIDE_FOR_DECOMP: 24
+    FALLBACK_CLASSES: ['crosswalk',]
+    BIAS_VALUE: -1e4
+  PRETRAIN_CHOICE: 'imagenet'
+  PRETRAIN_PATH: 'C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\'
   IF_LABELSMOOTH: 'on'
   IF_WITH_CENTER: 'no'
   NAME: 'part_attention_vit'
@@ -34,26 +44,29 @@ INPUT:
     PROB: 0.5
 
 DATASETS:
-  TRAIN: ('UrbanElementsReID', 'UrbanElementsReID_localval')
+  TRAIN: ('UrbanElementsReID_localval_train', 'UrbanElementsReID')
   TEST: ('UrbanElementsReID',)
-  #ROOT_DIR: ('../../data') # root of datasets
   ROOT_DIR: 'C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026'
+  EXTERNAL_ROOT: 'C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\UAM_Unified'
+  MODE: 'mixed_train'
 
 DATALOADER:
   SAMPLER: 'softmax_triplet'
   NUM_INSTANCE: 4
   NUM_WORKERS: 0
+  MIXED_EXTERNAL_RATIO: 0.2
 
 SOLVER:
   OPTIMIZER_NAME: 'SGD'
-  MAX_EPOCHS: 2
+  MAX_EPOCHS: 60
   BASE_LR: 0.001 # 0.0004 for msmt
+  WARMUP_EPOCHS: 5
   GRAD_CLIP_ENABLED: True
   GRAD_CLIP_NORM: 1.0
   IMS_PER_BATCH: 64
   WARMUP_METHOD: 'linear'
   LARGE_FC_LR: False
-  CHECKPOINT_PERIOD: 5
+  CHECKPOINT_PERIOD: 10
   LOG_PERIOD: 60
   EVAL_PERIOD: 1
   WEIGHT_DECAY:  1e-4

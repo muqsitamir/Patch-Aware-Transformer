@@ -20,6 +20,15 @@ def _uses_part_attention_soft_labels(cfg, model_name):
 
 
 def build_loss(cfg, num_classes):
+    fg_attn = getattr(cfg.MODEL, 'FOREGROUND_ATTN', None)
+    if getattr(fg_attn, 'ENABLED', False) and cfg.MODEL.PC_LOSS:
+        import logging
+        logging.getLogger('PAT.train').warning(
+            'MODEL.FOREGROUND_ATTN.ENABLED=True is incompatible with '
+            'MODEL.PC_LOSS=True (part-classification assumes fixed stripe '
+            'parts, which foreground attention replaces). Set PC_LOSS=False.'
+        )
+
     name = cfg.MODEL.NAME
     sampler = cfg.DATALOADER.SAMPLER
     if cfg.MODEL.NAME not in feat_dim_dict.keys():

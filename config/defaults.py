@@ -87,6 +87,18 @@ _C.MODEL.CLASS_AWARE.QUERY_CSV = "query_classes.csv"
 _C.MODEL.CLASS_AWARE.TEST_CSV = "test_classes.csv"
 _C.MODEL.CLASS_AWARE.RETRIEVAL_SOURCE = "predicted"
 
+# Foreground-aware part attention (Preprocessing-Pipeline integration).
+# stride_size must equal patch_size (default 16) for mask downsampling to work.
+_C.MODEL.FOREGROUND_ATTN = CN()
+_C.MODEL.FOREGROUND_ATTN.ENABLED = False
+_C.MODEL.FOREGROUND_ATTN.NUM_REGIONS = 3
+_C.MODEL.FOREGROUND_ATTN.CLAHE_CLIP = 3.0
+_C.MODEL.FOREGROUND_ATTN.BOUNDARY_BLUR = 5.0
+_C.MODEL.FOREGROUND_ATTN.MIN_SIDE_FOR_DECOMP = 24
+_C.MODEL.FOREGROUND_ATTN.FALLBACK_CLASSES = ['crosswalk']
+_C.MODEL.FOREGROUND_ATTN.BIAS_VALUE = -1e4
+_C.MODEL.FOREGROUND_ATTN.CACHE_DIR = ''
+
 #-----------------------------------------------------------------------------
 # INPUT
 # -----------------------------------------------------------------------------

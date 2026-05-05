@@ -192,7 +192,7 @@ def part_attention_vit_do_train_with_amp(cfg,
     acc_meter = AverageMeter()
 
     evaluator = R1_mAP_eval(num_query, max_rank=50, feat_norm=cfg.TEST.FEAT_NORM)
-    scaler = amp.GradScaler(init_scale=512)
+    scaler = torch.amp.GradScaler('cuda', init_scale=512)
     batch_size = cfg.SOLVER.IMS_PER_BATCH
     # train
     if cfg.MODEL.PC_LOSS:
@@ -237,12 +237,15 @@ def part_attention_vit_do_train_with_amp(cfg,
             camid = informations['camid']
             img_path = informations['img_path']
             t_domains = informations['others']['domains']
+            masks = informations.get('masks', None)
 
             optimizer.zero_grad()
             img = img.to(device)
             target = vid.to(device)
             target_cam = camid.to(device)
             t_domains = t_domains.to(device)
+            if masks is not None:
+                masks = masks.to(device)
             class_targets = get_batch_class_targets(informations, device)
             use_class_aware = model_is_class_aware(model)
             class_logits = None
@@ -252,9 +255,9 @@ def part_attention_vit_do_train_with_amp(cfg,
             model.to(device)
             with amp.autocast(enabled=True):
                 if use_class_aware:
-                    score, layerwise_global_feat, layerwise_feat_list, class_logits = model(img, return_class_logits=True)
+                    score, layerwise_global_feat, layerwise_feat_list, class_logits = model(img, masks=masks, return_class_logits=True)
                 else:
-                    score, layerwise_global_feat, layerwise_feat_list = model(img)
+                    score, layerwise_global_feat, layerwise_feat_list = model(img, masks=masks)
                 
                 ############## patch learning ######################
                 patch_agent, position = patch_centers.get_soft_label(img_path, layerwise_feat_list[-1], vid=vid, camid=camid)
@@ -408,7 +411,10 @@ def part_attention_vit_do_train_with_amp(cfg,
                             img = informations['images'].to(device)
                             vid = informations['targets']
                             camid = informations['camid']
-                            feat = model(img)
+                            val_masks = informations.get('masks', None)
+                            if val_masks is not None:
+                                val_masks = val_masks.to(device)
+                            feat = model(img, masks=val_masks)
                             evaluator.update((feat, vid, camid))
                     cmc, mAP, _, _, _, _, _ = evaluator.compute()
                     logger.info("Validation Results - Epoch: {}".format(epoch))

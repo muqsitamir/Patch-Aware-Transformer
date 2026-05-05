@@ -12,8 +12,10 @@ from torch.utils.data import DataLoader
 from utils import comm
 import random
 
+import torchvision.transforms as T
+
 from . import samplers
-from .common import CommDataset
+from .common import CommDataset, _ensure_pipeline_importable  # _ensure_pipeline_importable used for FOREGROUND_ATTN
 from .datasets import DATASET_REGISTRY
 from .transforms import build_transforms
 from utils.class_aware import (
@@ -270,7 +272,68 @@ def build_reid_train_loader(cfg):
             domain_idx += 1
             train_items.extend(dataset.train)
 
-    train_set = CommDataset(train_items, train_transforms, relabel=True)
+    mask_gen = mask_cache = paired_transform = None
+    fg = getattr(cfg.MODEL, 'FOREGROUND_ATTN', None)
+    if getattr(fg, 'ENABLED', False):
+        _ensure_pipeline_importable()
+        from mask_generator import ForegroundMaskGenerator  # type: ignore[import]
+        from cache import MaskCache  # type: ignore[import]
+        from paired_transforms import (  # type: ignore[import]
+            PairedImageMaskTransform, PairedHFlip, PairedResize, PairedPadCrop,
+        )
+        mask_gen = ForegroundMaskGenerator(
+            num_regions=fg.NUM_REGIONS,
+            clahe_clip_limit=fg.CLAHE_CLIP,
+            boundary_blur_sigma=fg.BOUNDARY_BLUR,
+            min_side_for_decomp=fg.MIN_SIDE_FOR_DECOMP,
+            fallback_classes=tuple(fg.FALLBACK_CLASSES),
+        )
+        cache_dir = fg.CACHE_DIR or os.path.join(str(cfg.DATASETS.ROOT_DIR), '_foreground_masks')
+        mask_cache = MaskCache(
+            cache_dir=cache_dir,
+            generator_config={
+                'num_regions': fg.NUM_REGIONS,
+                'clahe_clip_limit': fg.CLAHE_CLIP,
+                'boundary_blur_sigma': fg.BOUNDARY_BLUR,
+                'min_side_for_decomp': fg.MIN_SIDE_FOR_DECOMP,
+                'fallback_classes': list(fg.FALLBACK_CLASSES),
+            },
+        )
+        cj = getattr(cfg.INPUT, 'CJ', None)
+        image_only_ops = [
+            T.ColorJitter(
+                brightness=getattr(cj, 'BRIGHTNESS', 0.15),
+                contrast=getattr(cj, 'CONTRAST', 0.15),
+                saturation=getattr(cj, 'SATURATION', 0.10),
+                hue=getattr(cj, 'HUE', 0.02),
+            ) if (cj and getattr(cj, 'ENABLED', False)) else None,
+            T.ToTensor(),
+            T.Normalize(mean=cfg.INPUT.PIXEL_MEAN, std=cfg.INPUT.PIXEL_STD),
+        ]
+        image_only_ops = [op for op in image_only_ops if op is not None]
+        paired_transform = PairedImageMaskTransform(
+            paired_ops=[
+                PairedHFlip(p=getattr(cfg.INPUT, 'FLIP_PROB', 0.5)),
+                PairedResize(cfg.INPUT.SIZE_TRAIN),
+                PairedPadCrop(
+                    padding=getattr(cfg.INPUT, 'PADDING', 10),
+                    crop_size=cfg.INPUT.SIZE_TRAIN,
+                ),
+            ],
+            image_only_ops=image_only_ops,
+        )
+        logging.getLogger('PAT.train').info(
+            'FOREGROUND_ATTN enabled — mask_gen active, cache_dir={}'.format(cache_dir)
+        )
+
+    train_set = CommDataset(
+        train_items,
+        transform=train_transforms,     # used only when mask_gen is None
+        relabel=True,
+        mask_gen=mask_gen,
+        mask_cache=mask_cache,
+        paired_transform=paired_transform,
+    )
 
     train_loader = make_sampler(
         train_set=train_set,

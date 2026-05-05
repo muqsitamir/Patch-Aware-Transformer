@@ -356,8 +356,8 @@ class build_part_attention_vit(nn.Module):
             self.semantic_head = nn.Linear(self.in_planes, self.num_semantic_classes, bias=False)
             self.semantic_head.apply(weights_init_classifier)
 
-    def forward(self, x, return_class_logits=False):
-        layerwise_tokens = self.base(x) # B, N, C
+    def forward(self, x, masks=None, return_class_logits=False):
+        layerwise_tokens = self.base(x, masks=masks) # B, N, C
         layerwise_cls_tokens = [t[:, 0] for t in layerwise_tokens] # cls token
         part_feat_list = layerwise_tokens[-1][:, 1: 4] # 3, 768
 

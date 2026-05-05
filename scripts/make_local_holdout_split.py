@@ -11,6 +11,10 @@ TRAIN_CSV = "train.csv"
 TRAIN_CLASSES_CSV = "train_classes.csv"
 IMAGE_TRAIN_DIR = "image_train"
 
+_CLASSES_SUFFIX_MAP = {
+    "train_filtered.csv": "train_classes_filtered.csv",
+}
+
 LOCAL_TRAIN_CSV = "local_train.csv"
 LOCAL_TRAIN_CLASSES_CSV = "local_train_classes.csv"
 LOCAL_VAL_QUERY_CSV = "local_val_query.csv"
@@ -59,9 +63,11 @@ def _row_value(row, column):
     return str(row.get(column, "")).strip()
 
 
-def _load_source_rows(root):
-    train_path = os.path.join(root, TRAIN_CSV)
-    classes_path = os.path.join(root, TRAIN_CLASSES_CSV)
+def _load_source_rows(root, train_csv=None, classes_csv=None):
+    train_csv = train_csv or TRAIN_CSV
+    classes_csv = classes_csv or _CLASSES_SUFFIX_MAP.get(train_csv, TRAIN_CLASSES_CSV)
+    train_path = os.path.join(root, train_csv)
+    classes_path = os.path.join(root, classes_csv)
     image_dir = os.path.join(root, IMAGE_TRAIN_DIR)
 
     for path in (train_path, classes_path, image_dir):
@@ -351,8 +357,8 @@ def _validate_split(train_items, query_items, gallery_items, heldout_ids):
                 )
 
 
-def make_split(root, val_id_ratio, seed):
-    train_header, classes_header, items = _load_source_rows(root)
+def make_split(root, val_id_ratio, seed, train_csv=None, classes_csv=None):
+    train_header, classes_header, items = _load_source_rows(root, train_csv, classes_csv)
 
     pid_to_items = defaultdict(list)
     for item in items:
@@ -413,6 +419,14 @@ def parse_args():
     parser.add_argument("--root", required=True, help="Urban2026 dataset root")
     parser.add_argument("--val-id-ratio", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=1234)
+    parser.add_argument(
+        "--source-csv", default=None,
+        help="Training CSV to split (default: train.csv). Use train_filtered.csv to split the filtered dataset."
+    )
+    parser.add_argument(
+        "--source-classes-csv", default=None,
+        help="Corresponding classes CSV (auto-derived from --source-csv if omitted)."
+    )
     args = parser.parse_args()
 
     if not 0.0 < args.val_id_ratio < 1.0:
@@ -424,4 +438,10 @@ def parse_args():
 
 if __name__ == "__main__":
     parsed_args = parse_args()
-    make_split(parsed_args.root, parsed_args.val_id_ratio, parsed_args.seed)
+    make_split(
+        parsed_args.root,
+        parsed_args.val_id_ratio,
+        parsed_args.seed,
+        train_csv=parsed_args.source_csv,
+        classes_csv=parsed_args.source_classes_csv,
+    )

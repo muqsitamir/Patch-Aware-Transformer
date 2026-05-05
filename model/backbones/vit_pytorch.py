@@ -21,6 +21,8 @@ for some einops/einsum fun
 Hacked together by / Copyright 2020 Ross Wightman
 """
 import math
+import os
+import sys
 from functools import partial
 from itertools import repeat
 import random
@@ -29,6 +31,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import collections.abc as container_abcs
+
+# ---------------------------------------------------------------------------
+# Preprocessing-Pipeline import helper
+# The Preprocessing-Pipeline directory sits at ../../Preprocessing-Pipeline
+# relative to this file. Because its name contains a hyphen it cannot be
+# imported with a plain `import` statement, so we add it to sys.path and
+# import from individual modules inside it.
+# ---------------------------------------------------------------------------
+_PIPELINE_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '../../PreprocessingPipeline')
+)
+
+def _ensure_pipeline_importable():
+    if _PIPELINE_DIR not in sys.path:
+        sys.path.insert(0, _PIPELINE_DIR)
 int_classes = int
 string_classes = str
 
@@ -212,18 +229,15 @@ class part_Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x, mask=None):
+    def forward(self, x, attn_bias=None):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
-        # add mask to q k v
-        mask = mask.to(q.device.type)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
-        if mask is not None:
-            attn = attn.masked_fill(~mask.bool(), torch.tensor(-1e3, dtype=torch.float16)) # mask
+        if attn_bias is not None:
+            attn = attn + attn_bias.to(dtype=attn.dtype)  # (B,1,N,N) broadcasts over heads; pre-softmax
         attn = attn.softmax(dim=-1)
-        attn = torch.mul(attn, mask) ###
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
@@ -266,9 +280,8 @@ class part_Attention_Block(nn.Module):
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-    def forward(self, x, mask = None):
-        # part attention
-        x = x + self.drop_path(self.part_attn(self.norm1(x), mask))
+    def forward(self, x, attn_bias=None):
+        x = x + self.drop_path(self.part_attn(self.norm1(x), attn_bias=attn_bias))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
@@ -655,7 +668,7 @@ class part_Attention_ViT(nn.Module):
         self.num_classes = num_classes
         self.fc = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-    def forward_features(self, x):
+    def forward_features(self, x, masks=None):
         B = x.shape[0]
         x = self.patch_embed(x)
 
@@ -666,23 +679,47 @@ class part_Attention_ViT(nn.Module):
         x = torch.cat((cls_tokens, part_token1, part_token2, part_token3, x), dim=1)
 
         x = x + self.pos_embed
-
         x = self.pos_drop(x)
         layerwise_tokens = []
 
-        mask = torch.ones([B, 1, self.num_patches, self.num_patches], device=x.device.type)
-        # if self.training:
-            # mask[:, 0] = self.mask
-        # for i in range(B):
-        mask[:, 0] = self.attn_mask_generate(self.num_patches, self.patch_embed.num_y, self.patch_embed.num_x, x.device.type)
+        num_total = x.shape[1]  # CLS + 3 part tokens + image patches
+
+        if masks is not None:
+            # Foreground-aware attention: convert pixel-resolution masks to a
+            # (B, 1, N, N) additive bias, 0 where a part-token should attend,
+            # large-negative where it should not.
+            _ensure_pipeline_importable()
+            from attention_bias import downsample_masks_to_patch_grid, make_attn_bias_matrix  # type: ignore[import]
+            patch_masks = downsample_masks_to_patch_grid(
+                masks.to(device=x.device, dtype=x.dtype),
+                patch_size=self.patch_embed.patch_size[0],
+                output_layout="flat",
+            )
+            attn_bias = make_attn_bias_matrix(
+                patch_masks,
+                part_token_indices=[1, 2, 3],
+                patch_token_indices=list(range(4, num_total)),
+                num_tokens=num_total,
+                bias_value=-1e4,
+            ).to(dtype=x.dtype)
+        else:
+            # Fall back to original horizontal-stripe mask, converted to an
+            # additive bias so the same pre-softmax path is always used.
+            stripe_mask = self.attn_mask_generate(
+                num_total, self.patch_embed.num_y, self.patch_embed.num_x, x.device.type
+            )
+            # stripe_mask: (N, N) bool, True=attend. Convert: 0 where True, -1e3 where False.
+            attn_bias = (~stripe_mask).to(dtype=x.dtype) * -1e3
+            attn_bias = attn_bias.unsqueeze(0).unsqueeze(0).expand(B, 1, -1, -1)
+
         for blk in self.blocks:
-            x = blk(x, mask)
+            x = blk(x, attn_bias=attn_bias)
             layerwise_tokens.append(x)
         layerwise_tokens = [self.norm(t) for t in layerwise_tokens]
         return layerwise_tokens
 
-    def forward(self, x):
-        x = self.forward_features(x)
+    def forward(self, x, masks=None):
+        x = self.forward_features(x, masks=masks)
         return x
 
     def load_param(self, model_path):

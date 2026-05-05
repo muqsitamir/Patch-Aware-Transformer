@@ -1,6 +1,6 @@
-2026-04-29 10:42:12,739 PAT INFO: Namespace(config_file='config/UrbanElementsReID_test.yml', opts=[], track='submission.txt')
-2026-04-29 10:42:12,740 PAT INFO: Loaded configuration file config/UrbanElementsReID_test.yml
-2026-04-29 10:42:12,740 PAT INFO: 
+2026-04-27 20:19:31,701 PAT INFO: Namespace(config_file='config/UrbanElementsReID_test.yml', opts=[], track='submission.txt')
+2026-04-27 20:19:31,701 PAT INFO: Loaded configuration file config/UrbanElementsReID_test.yml
+2026-04-27 20:19:31,701 PAT INFO: 
 MODEL:
   PRETRAIN_CHOICE: 'finetune'
   PRETRAIN_PATH: 'C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\part_attention_vit_60.pth'
@@ -47,13 +47,12 @@ SOLVER:
   OPTIMIZER_NAME: 'SGD'
   MAX_EPOCHS: 60
   BASE_LR: 0.001 # 0.0004 for msmt
-  WARMUP_EPOCHS: 5
   IMS_PER_BATCH: 64
   WARMUP_METHOD: 'linear'
   LARGE_FC_LR: False
   CHECKPOINT_PERIOD: 5
-  LOG_PERIOD: 10
-  EVAL_PERIOD: 10
+  LOG_PERIOD: 60
+  EVAL_PERIOD: 1
   WEIGHT_DECAY:  1e-4
   WEIGHT_DECAY_BIAS: 1e-4
   BIAS_LR_FACTOR: 2
@@ -61,9 +60,9 @@ SOLVER:
 
 TEST:
   EVAL: True
-  IMS_PER_BATCH: 64
+  IMS_PER_BATCH: 48
   RE_RANKING: False
-  WEIGHT: "models/model/part_attention_vit_60.pth"
+  WEIGHT: "models/model/part_attention_vit_20.pth"
   NECK_FEAT: 'before'
   FEAT_NORM: True
   CLASS_POSTPROCESS: "off"
@@ -82,7 +81,7 @@ LOG_ROOT: 'models/' # root of log file
 TB_LOG_ROOT: './tb_log/'
 LOG_NAME: './model'
 
-2026-04-29 10:42:12,740 PAT INFO: Running with config:
+2026-04-27 20:19:31,702 PAT INFO: Running with config:
 DATALOADER:
   CAMERA_TO_DOMAIN: False
   DELETE_REM: False
@@ -150,15 +149,6 @@ MODEL:
   DROP_OUT: 0.0
   DROP_PATH: 0.1
   FINETUNE_PATH: 
-  FOREGROUND_ATTN:
-    BIAS_VALUE: -10000.0
-    BOUNDARY_BLUR: 5.0
-    CACHE_DIR: 
-    CLAHE_CLIP: 3.0
-    ENABLED: False
-    FALLBACK_CLASSES: ['crosswalk']
-    MIN_SIDE_FOR_DECOMP: 24
-    NUM_REGIONS: 3
   FREEZE_PATCH_EMBED: True
   ID_LOSS_TYPE: softmax
   ID_LOSS_WEIGHT: 1.0
@@ -190,13 +180,13 @@ SOLVER:
   COSINE_MARGIN: 0.5
   COSINE_SCALE: 30
   DELETE_OLD_CHECKPOINTS: False
-  EVAL_PERIOD: 10
+  EVAL_PERIOD: 1
   GAMMA: 0.1
   GRAD_CLIP_ENABLED: False
   GRAD_CLIP_NORM: 1.0
   IMS_PER_BATCH: 64
   LARGE_FC_LR: False
-  LOG_PERIOD: 10
+  LOG_PERIOD: 60
   MARGIN: 0.3
   MAX_EPOCHS: 60
   MOMENTUM: 0.9
@@ -226,7 +216,7 @@ TEST:
   GROUP_BONUS_MODE: hard
   GROUP_CLASS_SOURCE: auto
   GROUP_RERANK_LAMBDA: 0.2
-  IMS_PER_BATCH: 64
+  IMS_PER_BATCH: 48
   LOG_RANK_CHANGES: 5
   METRICS_PATH: 
   NECK_FEAT: before
@@ -242,18 +232,18 @@ TEST:
   TTA_FLIP: True
   TTA_MERGE: mean
   TTA_SCALES: [1.0]
-  WEIGHT: models/model/part_attention_vit_60.pth
-2026-04-29 10:42:13,370 PAT.train INFO: Number of parameter: 86.52M
-2026-04-29 10:42:13,644 PAT INFO: UrbanElementsReID_test: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
-2026-04-29 10:42:13,681 PAT INFO: => Loaded UrbanElementsReID_test
-2026-04-29 10:42:13,682 PAT INFO:   ----------------------------------------
-2026-04-29 10:42:13,682 PAT INFO:   subset   | # ids | # images | # cameras
-2026-04-29 10:42:13,682 PAT INFO:   ----------------------------------------
-2026-04-29 10:42:13,682 PAT INFO:   query    |     1 |      928 |         1
-2026-04-29 10:42:13,682 PAT INFO:   gallery  |     1 |     2844 |         3
-2026-04-29 10:42:13,682 PAT INFO:   ----------------------------------------
-2026-04-29 10:42:13,684 PAT.test INFO: Enter inferencing
-2026-04-29 10:42:13,684 PAT.test INFO: Validation dataset: UrbanElementsReID_test
-2026-04-29 10:42:13,728 PAT.test WARNING: Skipping metric evaluation for UrbanElementsReID_test because query/gallery IDs are dummy or unavailable; mAP/CMC would be misleading and will not be logged. Submission generation is unaffected.
-2026-04-29 10:42:13,728 PAT INFO: TTA settings: enabled=False, flip=False, scales=[1.0], merge=mean, views_per_image=1
-2026-04-29 10:42:21,083 PAT INFO: Submission class source: csv
+  WEIGHT: models/model/part_attention_vit_20.pth
+2026-04-27 20:19:32,316 PAT.train INFO: Number of parameter: 86.52M
+2026-04-27 20:19:32,595 PAT INFO: UrbanElementsReID_test: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-27 20:19:32,626 PAT INFO: => Loaded UrbanElementsReID_test
+2026-04-27 20:19:32,626 PAT INFO:   ----------------------------------------
+2026-04-27 20:19:32,626 PAT INFO:   subset   | # ids | # images | # cameras
+2026-04-27 20:19:32,626 PAT INFO:   ----------------------------------------
+2026-04-27 20:19:32,626 PAT INFO:   query    |     1 |      928 |         1
+2026-04-27 20:19:32,626 PAT INFO:   gallery  |     1 |     2844 |         3
+2026-04-27 20:19:32,626 PAT INFO:   ----------------------------------------
+2026-04-27 20:19:32,628 PAT.test INFO: Enter inferencing
+2026-04-27 20:19:32,628 PAT.test INFO: Validation dataset: UrbanElementsReID_test
+2026-04-27 20:19:32,664 PAT.test WARNING: Skipping metric evaluation for UrbanElementsReID_test because query/gallery IDs are dummy or unavailable; mAP/CMC would be misleading and will not be logged. Submission generation is unaffected.
+2026-04-27 20:19:32,664 PAT INFO: TTA settings: enabled=False, flip=False, scales=[1.0], merge=mean, views_per_image=1
+2026-04-27 20:19:40,359 PAT INFO: Submission class source: csv

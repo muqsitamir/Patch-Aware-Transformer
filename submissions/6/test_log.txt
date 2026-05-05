@@ -1,6 +1,6 @@
-2026-04-29 10:42:12,739 PAT INFO: Namespace(config_file='config/UrbanElementsReID_test.yml', opts=[], track='submission.txt')
-2026-04-29 10:42:12,740 PAT INFO: Loaded configuration file config/UrbanElementsReID_test.yml
-2026-04-29 10:42:12,740 PAT INFO: 
+2026-04-28 22:56:39,260 PAT INFO: Namespace(config_file='config/UrbanElementsReID_test.yml', opts=[], track='submission.txt')
+2026-04-28 22:56:39,261 PAT INFO: Loaded configuration file config/UrbanElementsReID_test.yml
+2026-04-28 22:56:39,261 PAT INFO: 
 MODEL:
   PRETRAIN_CHOICE: 'finetune'
   PRETRAIN_PATH: 'C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\part_attention_vit_60.pth'
@@ -63,7 +63,7 @@ TEST:
   EVAL: True
   IMS_PER_BATCH: 64
   RE_RANKING: False
-  WEIGHT: "models/model/part_attention_vit_60.pth"
+  WEIGHT: "models/model/part_attention_vit_5.pth"
   NECK_FEAT: 'before'
   FEAT_NORM: True
   CLASS_POSTPROCESS: "off"
@@ -82,7 +82,7 @@ LOG_ROOT: 'models/' # root of log file
 TB_LOG_ROOT: './tb_log/'
 LOG_NAME: './model'
 
-2026-04-29 10:42:12,740 PAT INFO: Running with config:
+2026-04-28 22:56:39,261 PAT INFO: Running with config:
 DATALOADER:
   CAMERA_TO_DOMAIN: False
   DELETE_REM: False
@@ -242,18 +242,18 @@ TEST:
   TTA_FLIP: True
   TTA_MERGE: mean
   TTA_SCALES: [1.0]
-  WEIGHT: models/model/part_attention_vit_60.pth
-2026-04-29 10:42:13,370 PAT.train INFO: Number of parameter: 86.52M
-2026-04-29 10:42:13,644 PAT INFO: UrbanElementsReID_test: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
-2026-04-29 10:42:13,681 PAT INFO: => Loaded UrbanElementsReID_test
-2026-04-29 10:42:13,682 PAT INFO:   ----------------------------------------
-2026-04-29 10:42:13,682 PAT INFO:   subset   | # ids | # images | # cameras
-2026-04-29 10:42:13,682 PAT INFO:   ----------------------------------------
-2026-04-29 10:42:13,682 PAT INFO:   query    |     1 |      928 |         1
-2026-04-29 10:42:13,682 PAT INFO:   gallery  |     1 |     2844 |         3
-2026-04-29 10:42:13,682 PAT INFO:   ----------------------------------------
-2026-04-29 10:42:13,684 PAT.test INFO: Enter inferencing
-2026-04-29 10:42:13,684 PAT.test INFO: Validation dataset: UrbanElementsReID_test
-2026-04-29 10:42:13,728 PAT.test WARNING: Skipping metric evaluation for UrbanElementsReID_test because query/gallery IDs are dummy or unavailable; mAP/CMC would be misleading and will not be logged. Submission generation is unaffected.
-2026-04-29 10:42:13,728 PAT INFO: TTA settings: enabled=False, flip=False, scales=[1.0], merge=mean, views_per_image=1
-2026-04-29 10:42:21,083 PAT INFO: Submission class source: csv
+  WEIGHT: models/model/part_attention_vit_5.pth
+2026-04-28 22:56:39,946 PAT.train INFO: Number of parameter: 86.52M
+2026-04-28 22:56:40,237 PAT INFO: UrbanElementsReID_test: loading train CSV: C:\Users\revol\DLSVP1-ReID\Patch-Aware-Transformer\data\datasets\Urban2026\train_filtered.csv  classes CSV: train_classes_filtered.csv
+2026-04-28 22:56:40,268 PAT INFO: => Loaded UrbanElementsReID_test
+2026-04-28 22:56:40,268 PAT INFO:   ----------------------------------------
+2026-04-28 22:56:40,268 PAT INFO:   subset   | # ids | # images | # cameras
+2026-04-28 22:56:40,268 PAT INFO:   ----------------------------------------
+2026-04-28 22:56:40,268 PAT INFO:   query    |     1 |      928 |         1
+2026-04-28 22:56:40,268 PAT INFO:   gallery  |     1 |     2844 |         3
+2026-04-28 22:56:40,269 PAT INFO:   ----------------------------------------
+2026-04-28 22:56:40,270 PAT.test INFO: Enter inferencing
+2026-04-28 22:56:40,270 PAT.test INFO: Validation dataset: UrbanElementsReID_test
+2026-04-28 22:56:40,314 PAT.test WARNING: Skipping metric evaluation for UrbanElementsReID_test because query/gallery IDs are dummy or unavailable; mAP/CMC would be misleading and will not be logged. Submission generation is unaffected.
+2026-04-28 22:56:40,314 PAT INFO: TTA settings: enabled=False, flip=False, scales=[1.0], merge=mean, views_per_image=1
+2026-04-28 22:56:47,917 PAT INFO: Submission class source: csv

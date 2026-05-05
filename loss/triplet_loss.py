@@ -69,37 +69,24 @@ def hard_example_mining(dist_mat, labels, return_inds=False):
     assert len(dist_mat.size()) == 2
     assert dist_mat.size(0) == dist_mat.size(1)
     N = dist_mat.size(0)
-    
+
     # shape [N, N]
     is_pos = labels.expand(N, N).eq(labels.expand(N, N).t())
     is_neg = labels.expand(N, N).ne(labels.expand(N, N).t())
 
-    # `dist_ap` means distance(anchor, positive)
-    # both `dist_ap` and `relative_p_inds` with shape [N, 1]
-    dist_ap, relative_p_inds = torch.max(
-        dist_mat[is_pos].contiguous().view(N, -1), 1, keepdim=True)
-    # print(dist_mat[is_pos].shape)
-    # `dist_an` means distance(anchor, negative)
-    # both `dist_an` and `relative_n_inds` with shape [N, 1]
-    dist_an, relative_n_inds = torch.min(
-        dist_mat[is_neg].contiguous().view(N, -1), 1, keepdim=True)
-    # shape [N]
+    # Masked per-row max/min — works even when identities have different
+    # instance counts in the batch (e.g. mixed-dataset training).
+    INF = float('inf')
+    dist_ap, p_idx = dist_mat.masked_fill(~is_pos, -INF).max(dim=1, keepdim=True)
+    dist_an, n_idx = dist_mat.masked_fill(~is_neg,  INF).min(dim=1, keepdim=True)
+
     dist_ap = dist_ap.squeeze(1)
     dist_an = dist_an.squeeze(1)
 
     if return_inds:
-        # shape [N, N]
-        ind = (labels.new().resize_as_(labels)
-               .copy_(torch.arange(0, N).long())
-               .unsqueeze(0).expand(N, N))
-        # shape [N, 1]
-        p_inds = torch.gather(
-            ind[is_pos].contiguous().view(N, -1), 1, relative_p_inds.data)
-        n_inds = torch.gather(
-            ind[is_neg].contiguous().view(N, -1), 1, relative_n_inds.data)
-        # shape [N]
-        p_inds = p_inds.squeeze(1)
-        n_inds = n_inds.squeeze(1)
+        ind = torch.arange(0, N, device=dist_mat.device).unsqueeze(0).expand(N, N)
+        p_inds = torch.gather(ind, 1, p_idx).squeeze(1)
+        n_inds = torch.gather(ind, 1, n_idx).squeeze(1)
         return dist_ap, dist_an, p_inds, n_inds
 
     return dist_ap, dist_an
