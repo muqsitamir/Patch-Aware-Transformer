@@ -25,14 +25,24 @@ def _uses_urban_class_csv(dataset_name):
 
 def _dataset_root(cfg):
     dataset_mode = str(getattr(cfg.DATASETS, "MODE", "challenge_only")).lower()
-    if dataset_mode == "challenge_only":
+    if dataset_mode in ("challenge_only", "challenge_plus_external"):
         return cfg.DATASETS.ROOT_DIR
     if dataset_mode == "external_only":
         external_root = str(getattr(cfg.DATASETS, "EXTERNAL_ROOT", ""))
         if not external_root:
             raise ValueError("DATASETS.EXTERNAL_ROOT must be set when DATASETS.MODE is 'external_only'")
         return external_root
-    raise ValueError("Unsupported DATASETS.MODE '{}'. Expected 'challenge_only' or 'external_only'.".format(dataset_mode))
+    raise ValueError("Unsupported DATASETS.MODE '{}'. Expected 'challenge_only', 'external_only', or 'challenge_plus_external'.".format(dataset_mode))
+
+
+def _train_roots(cfg):
+    dataset_mode = str(getattr(cfg.DATASETS, "MODE", "challenge_only")).lower()
+    if dataset_mode == "challenge_plus_external":
+        external_root = str(getattr(cfg.DATASETS, "EXTERNAL_ROOT", ""))
+        if not external_root:
+            raise ValueError("DATASETS.EXTERNAL_ROOT must be set when DATASETS.MODE is 'challenge_plus_external'")
+        return [cfg.DATASETS.ROOT_DIR, external_root]
+    return [_dataset_root(cfg)]
 
 
 def build_reid_train_loader(cfg):
@@ -48,37 +58,41 @@ def build_reid_train_loader(cfg):
     train_transforms = build_transforms(cfg, is_train=True, is_fake=False)
     train_items = list()
     domain_idx = 0
+    pid_offset = 0
     camera_all = list()
 
     # load datasets
-    _root = _dataset_root(cfg)
-    for d in cfg.DATASETS.TRAIN:
-        dataset_kwargs = {"root": _root, "combineall": cfg.DATASETS.COMBINEALL}
-        if is_class_aware_enabled(cfg) and _uses_urban_class_csv(d):
-            dataset_kwargs["class_aware"] = True
-            dataset_kwargs["class_aware_cfg"] = cfg.MODEL.CLASS_AWARE
-        if d == 'CUHK03_NP':
-            dataset = DATASET_REGISTRY.get('CUHK03')(root=_root, cuhk03_labeled=False)
-        else:
-            dataset = DATASET_REGISTRY.get(d)(**dataset_kwargs)
-        if comm.is_main_process():
-            dataset.show_train()
-        for i, item in enumerate(dataset.train):
-            item = tuple(item)
-            if len(item) > 3 and isinstance(item[-1], dict):
-                add_info = dict(item[-1])
-                item = item[:-1]
+    for _root in _train_roots(cfg):
+        for d in cfg.DATASETS.TRAIN:
+            dataset_kwargs = {"root": _root, "combineall": cfg.DATASETS.COMBINEALL}
+            if is_class_aware_enabled(cfg) and _uses_urban_class_csv(d):
+                dataset_kwargs["class_aware"] = True
+                dataset_kwargs["class_aware_cfg"] = cfg.MODEL.CLASS_AWARE
+            if d == 'CUHK03_NP':
+                dataset = DATASET_REGISTRY.get('CUHK03')(root=_root, cuhk03_labeled=False)
             else:
-                add_info = {}
+                dataset = DATASET_REGISTRY.get(d)(**dataset_kwargs)
+            if comm.is_main_process():
+                dataset.show_train()
+            current_pids = {item[1] for item in dataset.train}
+            for i, item in enumerate(dataset.train):
+                item = tuple(item)
+                if len(item) > 3 and isinstance(item[-1], dict):
+                    add_info = dict(item[-1])
+                    item = item[:-1]
+                else:
+                    add_info = {}
+                item = (item[0], item[1] + pid_offset) + item[2:]
 
-            if cfg.DATALOADER.CAMERA_TO_DOMAIN:
-                add_info['domains'] = item[2]
-                camera_all.append(item[2])
-            else:
-                add_info['domains'] = int(domain_idx)
-            dataset.train[i] = tuple(item) + (add_info,)
-        domain_idx += 1
-        train_items.extend(dataset.train)
+                if cfg.DATALOADER.CAMERA_TO_DOMAIN:
+                    add_info['domains'] = item[2]
+                    camera_all.append(item[2])
+                else:
+                    add_info['domains'] = int(domain_idx)
+                dataset.train[i] = tuple(item) + (add_info,)
+            domain_idx += 1
+            pid_offset += len(current_pids)
+            train_items.extend(dataset.train)
 
     train_set = CommDataset(train_items, train_transforms, relabel=True)
 

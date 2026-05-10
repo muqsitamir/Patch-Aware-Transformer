@@ -1,4 +1,4 @@
-__all__ = ['ToTensor', 'RandomErasing', 'RandomPatch', 'AugMix', ]
+__all__ = ['ToTensor', 'RandomErasing', 'RandomPatch', 'AugMix', 'ResizePad']
 
 import math
 import random
@@ -33,6 +33,33 @@ class ToTensor(object):
 
     def __repr__(self):
         return self.__class__.__name__ + '()'
+
+
+class ResizePad(object):
+    """Resize a PIL image to fit inside target size, then center-pad."""
+
+    def __init__(self, size, interpolation=Image.BICUBIC, fill=128):
+        self.size = tuple(size)
+        self.interpolation = interpolation
+        self.fill = fill
+
+    def __call__(self, img):
+        target_h, target_w = self.size
+        src_w, src_h = img.size
+        scale = min(target_w / float(src_w), target_h / float(src_h))
+        new_w = max(1, int(round(src_w * scale)))
+        new_h = max(1, int(round(src_h * scale)))
+        resized = img.resize((new_w, new_h), self.interpolation)
+
+        if isinstance(self.fill, (list, tuple)):
+            fill = tuple(self.fill)
+        else:
+            fill = (self.fill, self.fill, self.fill)
+        canvas = Image.new(img.mode, (target_w, target_h), fill)
+        left = (target_w - new_w) // 2
+        top = (target_h - new_h) // 2
+        canvas.paste(resized, (left, top))
+        return canvas
 
 
 class RandomErasing(object):
