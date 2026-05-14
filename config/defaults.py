@@ -95,6 +95,11 @@ _C.INPUT = CN()
 _C.INPUT.SIZE_TRAIN = [256, 128]
 # Size of the image during test
 _C.INPUT.SIZE_TEST = [256, 128]
+# Resize while preserving original aspect ratio, then pad to SIZE_TRAIN/SIZE_TEST.
+# This avoids geometry distortion for object classes with very different shapes.
+_C.INPUT.ASPECT_PAD = CN()
+_C.INPUT.ASPECT_PAD.ENABLED = False
+_C.INPUT.ASPECT_PAD.FILL = 128
 # Random Erasing
 _C.INPUT.REA = CN()
 _C.INPUT.REA.ENABLED = False
@@ -123,6 +128,16 @@ _C.INPUT.CJ.BRIGHTNESS = 0.15
 _C.INPUT.CJ.CONTRAST = 0.15
 _C.INPUT.CJ.SATURATION = 0.1
 _C.INPUT.CJ.HUE = 0.1
+# Target-camera style augmentation. For this challenge, this can sample color
+# statistics from unlabeled c004 query crops and apply them to labeled train
+# images, preserving identity labels while reducing camera/style shortcuts.
+_C.INPUT.TARGET_STYLE = CN()
+_C.INPUT.TARGET_STYLE.ENABLED = False
+_C.INPUT.TARGET_STYLE.PROB = 0.5
+_C.INPUT.TARGET_STYLE.STRENGTH = 0.7
+_C.INPUT.TARGET_STYLE.ROOT_DIR = ""
+_C.INPUT.TARGET_STYLE.IMAGE_DIR = "image_query"
+_C.INPUT.TARGET_STYLE.MAX_IMAGES = 2048
 # Local Grayscale Transfomation
 _C.INPUT.LGT = CN()
 _C.INPUT.LGT.DO_LGT = False
@@ -142,7 +157,8 @@ _C.DATASETS.TEST = ('DukeMTMC',)
 # Root directory where datasets should be used (and downloaded if not found)
 _C.DATASETS.ROOT_DIR = ('../data')
 # Dataset selection mode. "challenge_only" keeps existing behavior;
-# "external_only" trains/evaluates loaders against DATASETS.EXTERNAL_ROOT.
+# "external_only" trains/evaluates loaders against DATASETS.EXTERNAL_ROOT;
+# "challenge_plus_external" trains on both roots and evaluates on ROOT_DIR.
 _C.DATASETS.MODE = 'challenge_only'
 _C.DATASETS.EXTERNAL_ROOT = ''
 # combine both train and test sets
@@ -205,6 +221,9 @@ _C.SOLVER.STEPS = (40, 70)
 _C.SOLVER.WARMUP_FACTOR = 0.01
 #  warm up epochs
 _C.SOLVER.WARMUP_EPOCHS = 5
+# Cosine scheduler horizon. Keep the historical default of 120; override this
+# for short fine-tuning phases that should genuinely anneal the LR.
+_C.SOLVER.SCHEDULER_EPOCHS = 120
 # method of warm up, option: 'constant','linear'
 _C.SOLVER.WARMUP_METHOD = "linear"
 

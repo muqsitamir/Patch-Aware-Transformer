@@ -1,6 +1,8 @@
-__all__ = ['ToTensor', 'RandomErasing', 'RandomPatch', 'AugMix', ]
+__all__ = ['ToTensor', 'RandomErasing', 'RandomPatch', 'AugMix', 'ResizePad', 'TargetStyleTransfer']
 
 import math
+import glob
+import os
 import random
 from collections import deque
 
@@ -33,6 +35,76 @@ class ToTensor(object):
 
     def __repr__(self):
         return self.__class__.__name__ + '()'
+
+
+class ResizePad(object):
+    """Resize a PIL image to fit inside target size, then center-pad."""
+
+    def __init__(self, size, interpolation=Image.BICUBIC, fill=128):
+        self.size = tuple(size)
+        self.interpolation = interpolation
+        self.fill = fill
+
+    def __call__(self, img):
+        target_h, target_w = self.size
+        src_w, src_h = img.size
+        scale = min(target_w / float(src_w), target_h / float(src_h))
+        new_w = max(1, int(round(src_w * scale)))
+        new_h = max(1, int(round(src_h * scale)))
+        resized = img.resize((new_w, new_h), self.interpolation)
+
+        if isinstance(self.fill, (list, tuple)):
+            fill = tuple(self.fill)
+        else:
+            fill = (self.fill, self.fill, self.fill)
+        canvas = Image.new(img.mode, (target_w, target_h), fill)
+        left = (target_w - new_w) // 2
+        top = (target_h - new_h) // 2
+        canvas.paste(resized, (left, top))
+        return canvas
+
+
+class TargetStyleTransfer(object):
+    """Match each training crop to color statistics sampled from target-camera crops."""
+
+    def __init__(self, root_dir, image_dir='image_query', probability=0.5, strength=0.7, max_images=2048):
+        self.probability = probability
+        self.strength = strength
+        self.stats = []
+
+        if not root_dir or probability <= 0 or strength <= 0:
+            return
+
+        style_dir = os.path.join(str(root_dir), str(image_dir))
+        paths = sorted(glob.glob(os.path.join(style_dir, '*.jpg')))
+        if max_images > 0 and len(paths) > max_images:
+            rng = random.Random(1234)
+            paths = rng.sample(paths, max_images)
+
+        for path in paths:
+            try:
+                arr = np.asarray(Image.open(path).convert('RGB'), dtype=np.float32)
+            except Exception:
+                continue
+            if arr.size == 0:
+                continue
+            flat = arr.reshape(-1, 3)
+            self.stats.append((flat.mean(axis=0), flat.std(axis=0) + 1e-6))
+
+    def __call__(self, img):
+        if not self.stats or random.random() > self.probability:
+            return img
+
+        arr = np.asarray(img.convert('RGB'), dtype=np.float32)
+        flat = arr.reshape(-1, 3)
+        src_mean = flat.mean(axis=0)
+        src_std = flat.std(axis=0) + 1e-6
+        tgt_mean, tgt_std = random.choice(self.stats)
+
+        styled = (arr - src_mean) / src_std * tgt_std + tgt_mean
+        styled = (1.0 - self.strength) * arr + self.strength * styled
+        styled = np.clip(styled, 0, 255).astype(np.uint8)
+        return Image.fromarray(styled)
 
 
 class RandomErasing(object):

@@ -46,6 +46,8 @@ def build_transforms(cfg, is_train=True, is_fake=False):
 
     if is_train:
         size_train = cfg.INPUT.SIZE_TRAIN
+        do_aspect_pad = cfg.INPUT.ASPECT_PAD.ENABLED
+        aspect_pad_fill = cfg.INPUT.ASPECT_PAD.FILL
 
         # augmix augmentation
         do_augmix = cfg.INPUT.DO_AUGMIX
@@ -86,7 +88,10 @@ def build_transforms(cfg, is_train=True, is_fake=False):
 
         if do_autoaug:
             res.append(AutoAugment(total_iter))
-        res.append(T.Resize(size_train, interpolation=3))
+        if do_aspect_pad:
+            res.append(ResizePad(size_train, interpolation=Image.BICUBIC, fill=aspect_pad_fill))
+        else:
+            res.append(T.Resize(size_train, interpolation=3))
         if do_flip:
             res.append(T.RandomHorizontalFlip(p=flip_prob))
         if do_pad:
@@ -96,6 +101,16 @@ def build_transforms(cfg, is_train=True, is_fake=False):
             res.append(LGT(lgt_prob))
         if do_cj:
             res.append(T.RandomApply([T.ColorJitter(cj_brightness, cj_contrast, cj_saturation, cj_hue)], p=cj_prob))
+        target_style = cfg.INPUT.TARGET_STYLE
+        if target_style.ENABLED:
+            target_root = target_style.ROOT_DIR if target_style.ROOT_DIR else cfg.DATASETS.ROOT_DIR
+            res.append(TargetStyleTransfer(
+                root_dir=target_root,
+                image_dir=target_style.IMAGE_DIR,
+                probability=target_style.PROB,
+                strength=target_style.STRENGTH,
+                max_images=target_style.MAX_IMAGES,
+            ))
         if do_augmix:
             res.append(AugMix())
         # if do_rea:
@@ -119,7 +134,10 @@ def build_transforms(cfg, is_train=True, is_fake=False):
             res.append(RE(probability=rea_prob, mode='pixel', max_count=1, device='cpu'))
     else:
         size_test = cfg.INPUT.SIZE_TEST
-        res.append(T.Resize(size_test, interpolation=3))
+        if cfg.INPUT.ASPECT_PAD.ENABLED:
+            res.append(ResizePad(size_test, interpolation=Image.BICUBIC, fill=cfg.INPUT.ASPECT_PAD.FILL))
+        else:
+            res.append(T.Resize(size_test, interpolation=3))
         res.extend([
             T.ToTensor(),
             T.Normalize([0.5,0.5,0.5],[0.5,0.5,0.5])

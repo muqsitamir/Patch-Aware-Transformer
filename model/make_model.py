@@ -1,10 +1,12 @@
 import logging
+import math
 import os
 import random
 # from threading import local
 from model.backbones.vit_pytorch import deit_tiny_patch16_224_TransReID, part_attention_deit_small, part_attention_deit_tiny, part_attention_vit_base, part_attention_vit_base_p32, part_attention_vit_large, part_attention_vit_small, vit_base_patch32_224_TransReID, vit_large_patch16_224_TransReID
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from utils.class_aware import is_class_aware_enabled
 
 from .backbones.resnet import BasicBlock, ResNet, Bottleneck
@@ -50,6 +52,49 @@ def weights_init_classifier(m):
             nn.init.constant_(m.bias, 0.0)
 
 
+def _grid_size_from_token_count(num_grid_tokens, preferred_hw_ratio=2.0):
+    root = int(round(math.sqrt(num_grid_tokens)))
+    if root * root == num_grid_tokens:
+        return root, root
+
+    best_pair = None
+    best_score = None
+    for h in range(1, int(math.sqrt(num_grid_tokens)) + 1):
+        if num_grid_tokens % h != 0:
+            continue
+        w = num_grid_tokens // h
+        for cand_h, cand_w in ((h, w), (w, h)):
+            score = abs((cand_h / float(cand_w)) - preferred_hw_ratio)
+            if best_score is None or score < best_score:
+                best_pair = (cand_h, cand_w)
+                best_score = score
+    return best_pair
+
+
+def _resize_finetune_pos_embed(value, target, target_h, target_w):
+    old_tokens = value.shape[1]
+    old_prefix_tokens = 4 if old_tokens > 4 else 1
+    old_grid_tokens = old_tokens - old_prefix_tokens
+    old_grid = _grid_size_from_token_count(old_grid_tokens)
+    if old_grid is None:
+        return None
+
+    old_h, old_w = old_grid
+    token_embed = value[:, :old_prefix_tokens]
+    grid_embed = value[:, old_prefix_tokens:]
+    grid_embed = grid_embed.reshape(1, old_h, old_w, -1).permute(0, 3, 1, 2)
+    grid_embed = F.interpolate(grid_embed, size=(target_h, target_w), mode='bilinear', align_corners=False)
+    grid_embed = grid_embed.permute(0, 2, 3, 1).reshape(1, target_h * target_w, -1)
+
+    if target.shape[1] - target_h * target_w == old_prefix_tokens:
+        resized = torch.cat([token_embed, grid_embed], dim=1)
+    elif old_prefix_tokens == 1 and target.shape[1] - target_h * target_w == 4:
+        resized = torch.cat([token_embed, token_embed, token_embed, token_embed, grid_embed], dim=1)
+    else:
+        return None
+    return resized if resized.shape == target.shape else None
+
+
 def _load_finetune_params(model, model_path):
     try:
         param_dict = torch.load(model_path, map_location='cpu', weights_only=True)
@@ -60,6 +105,7 @@ def _load_finetune_params(model, model_path):
 
     model_dict = model.state_dict()
     loaded_keys = []
+    resized_keys = []
     skipped_classifier_keys = []
     skipped_keys = []
     for i in param_dict:
@@ -68,6 +114,17 @@ def _load_finetune_params(model, model_path):
             skipped_keys.append(key)
             continue
         if model_dict[key].shape != param_dict[i].shape:
+            if key == 'base.pos_embed' and hasattr(model, 'base') and hasattr(model.base, 'patch_embed'):
+                resized = _resize_finetune_pos_embed(
+                    param_dict[i],
+                    model_dict[key],
+                    model.base.patch_embed.num_y,
+                    model.base.patch_embed.num_x,
+                )
+                if resized is not None:
+                    model_dict[key].copy_(resized)
+                    resized_keys.append(key)
+                    continue
             if key.startswith('classifier.'):
                 skipped_classifier_keys.append(key)
             else:
@@ -77,7 +134,9 @@ def _load_finetune_params(model, model_path):
         loaded_keys.append(key)
 
     print('Loading pretrained model for finetuning from {}'.format(model_path))
-    print('Loaded {} matched parameter tensors; skipped {} tensors.'.format(len(loaded_keys), len(skipped_keys) + len(skipped_classifier_keys)))
+    print('Loaded {} matched parameter tensors; resized {} tensors; skipped {} tensors.'.format(
+        len(loaded_keys), len(resized_keys), len(skipped_keys) + len(skipped_classifier_keys)
+    ))
     if skipped_classifier_keys:
         print('Reset ID classifier for finetuning due to shape mismatch: {}'.format(', '.join(skipped_classifier_keys)))
 
