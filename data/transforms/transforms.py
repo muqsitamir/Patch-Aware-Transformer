@@ -63,7 +63,6 @@ class ResizePad(object):
         canvas.paste(resized, (left, top))
         return canvas
 
-
 class TargetStyleTransfer(object):
     """Match each training crop to color statistics sampled from target-camera crops."""
 
