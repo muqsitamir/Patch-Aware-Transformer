@@ -19,6 +19,16 @@ The solution is based on Part-Aware Transformer (PAT) with a ViT-L/16 backbone. 
 - Target-camera style source: unlabeled `image_query` crops from the challenge test set
 - Inference: normalized embeddings, k-reciprocal re-ranking in the fast exporter, no semantic class postprocessing, no query expansion
 
+## Competition Rules Compliance
+
+- External challenge/domain data: **not used**.
+- Additional ReID datasets: **not used**.
+- Test/query/gallery labels: **not used**.
+- Created labels on the training data: **none used in the final submitted model**.
+- Generic initialization: the model uses the public ViT-L ImageNet checkpoint expected by the original PAT/TransReID code path. This is disclosed here because the competition rules prohibit external data; if the organizers interpret generic ImageNet initialization as external data, the uploaded model artifact should be treated accordingly.
+- Target-camera style transfer uses only unlabeled official challenge `image_query` image color statistics. It does not create pseudo-labels or identity labels for query/gallery images.
+- Model checkpoints are not committed to Git because of file size. They must be uploaded separately to Google Drive and linked from this repository.
+
 The target-camera style transfer is implemented in `data/transforms/transforms.py` as `TargetStyleTransfer` and is opt-in through:
 
 ```yaml
@@ -27,7 +37,7 @@ INPUT.TARGET_STYLE.ROOT_DIR: <challenge-root>
 INPUT.TARGET_STYLE.IMAGE_DIR: image_query
 ```
 
-## External Data And Pretrained Weights
+## Pretrained Weights And Uploaded Model Files
 
 The code expects ImageNet ViT checkpoints in `MODEL.PRETRAIN_PATH`. For ViT-L, the file used by this code path is:
 
@@ -35,9 +45,21 @@ The code expects ImageNet ViT checkpoints in `MODEL.PRETRAIN_PATH`. For ViT-L, t
 jx_vit_large_p16_224-4ee7a4dc.pth
 ```
 
-If reproducing the exact final run from a previous challenge-adapted checkpoint, set `BASE_CKPT` to that checkpoint. If reproducing from scratch, first train the baseline PAT/ViT-L model on the challenge training split, then use the resulting checkpoint as `BASE_CKPT` for target-camera adaptation.
+For exact reproduction from the final submitted model, download the model artifact from the Google Drive link below and set `CHECKPOINT` to the downloaded `.pth` file.
 
-No challenge labels from the test/query/gallery split are used. The target-style augmentation uses only unlabeled query image color statistics.
+```text
+Google Drive model folder: TODO_ADD_PUBLIC_GOOGLE_DRIVE_LINK_HERE
+```
+
+Expected uploaded artifacts:
+
+```text
+part_attention_vit_8.pth                 final submitted checkpoint
+jx_vit_large_p16_224-4ee7a4dc.pth        ViT-L initialization checkpoint, if redistribution is permitted
+MANIFEST.txt                             checksums and short descriptions
+```
+
+If reproducing the adaptation training run rather than only the final CSV export, set `BASE_CKPT` to the stage-1 checkpoint used to initialize target-camera adaptation. That stage-1 checkpoint must also be trained only with allowed data and uploaded in the Drive folder.
 
 ## Expected Dataset Layout
 
@@ -67,7 +89,24 @@ pip install -r requirements.txt
 
 The original environment bootstrap remains available in `enviroments.sh`.
 
-## Reproduction
+## Exact Submission Export From Uploaded Model
+
+After downloading the uploaded model artifact:
+
+```bash
+export CHALLENGE_ROOT=/path/to/Urban2026
+export PRETRAIN_DIR=/path/to/pretrained
+export CHECKPOINT=/path/to/part_attention_vit_8.pth
+bash scripts/export_urban2026_final.sh
+```
+
+This writes:
+
+```text
+submissions/final_submission.csv
+```
+
+## Training Reproduction
 
 The end-to-end target-camera adaptation script is:
 

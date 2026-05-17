@@ -2,7 +2,11 @@
 
 ## Urban Elements ReID Challenge 2026 Code Release
 
-This fork contains the code used for Urban Elements ReID Challenge 2026 experiments and submissions. The challenge-specific reproduction notes are in [CODE_RELEASE.md](CODE_RELEASE.md).
+This fork contains the code used for Urban Elements ReID Challenge 2026 experiments and submissions. The challenge-specific release files are:
+
+- [CODE_RELEASE.md](CODE_RELEASE.md): method, environment, and reproduction commands.
+- [MODEL_ARTIFACTS.md](MODEL_ARTIFACTS.md): Google Drive model upload requirements and manifest format.
+- [LABELS.md](LABELS.md): created-label disclosure.
 
 Minimal reproduction path:
 
@@ -13,8 +17,8 @@ pip install -r requirements.txt
 
 export CHALLENGE_ROOT=/path/to/Urban2026
 export PRETRAIN_DIR=/path/to/pretrained
-export BASE_CKPT=/path/to/base/part_attention_vit.pth
-bash scripts/reproduce_urban2026_final.sh
+export CHECKPOINT=/path/to/downloaded/part_attention_vit_8.pth
+bash scripts/export_urban2026_final.sh
 ```
 
 The generated Kaggle files are written to `submissions/*_submission.csv`.
