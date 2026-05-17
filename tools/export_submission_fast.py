@@ -135,12 +135,16 @@ def main():
         qf, gf = apply_query_expansion(qf, gf, cfg.TEST.QE_TOPK, cfg.TEST.QE_ALPHA)
     save_feature_files(cfg, qf, gf)
 
-    q_g_dist = np.dot(qf, gf.T)
-    q_q_dist = np.dot(qf, qf.T)
-    g_g_dist = np.dot(gf, gf.T)
-    re_rank_dist = re_ranking(q_g_dist, q_q_dist, g_g_dist)
+    q_g_sim = np.dot(qf, gf.T)
+    if cfg.TEST.RE_RANKING:
+        q_q_dist = np.dot(qf, qf.T)
+        g_g_dist = np.dot(gf, gf.T)
+        final_dist = re_ranking(q_g_sim, q_q_dist, g_g_dist)
+    else:
+        # build_class_postprocess_indices expects lower values to rank first.
+        final_dist = -q_g_sim
     indices = build_class_postprocess_indices(
-        re_rank_dist,
+        final_dist,
         mode=cfg.TEST.CLASS_POSTPROCESS,
         output_topk=SUBMISSION_TOPK,
         class_topk=cfg.TEST.CLASS_TOPK,

@@ -1,0 +1,12 @@
+torch
+torchvision
+torchaudio
+einops
+timm
+scikit-image
+opencv-python
+tensorboard
+yacs
+numpy
+Pillow
+scipy
