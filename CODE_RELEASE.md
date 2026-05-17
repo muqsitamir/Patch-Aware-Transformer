@@ -48,7 +48,7 @@ jx_vit_large_p16_224-4ee7a4dc.pth
 For exact reproduction from the final submitted model, download the model artifact from the Google Drive link below and set `CHECKPOINT` to the downloaded `.pth` file.
 
 ```text
-Google Drive model folder: TODO_ADD_PUBLIC_GOOGLE_DRIVE_LINK_HERE
+Google Drive model folder: https://drive.google.com/drive/folders/1MpyNyBEU2CVUmPFmXyP4cWWfbbJCgsNQ?usp=sharing
 ```
 
 Expected uploaded artifacts:

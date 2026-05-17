@@ -5,7 +5,7 @@ The competition rules require model files to be uploaded through a Google Drive 
 ## Google Drive Link
 
 ```text
-TODO_ADD_PUBLIC_GOOGLE_DRIVE_LINK_HERE
+https://drive.google.com/drive/folders/1MpyNyBEU2CVUmPFmXyP4cWWfbbJCgsNQ?usp=sharing
 ```
 
 Set the Drive folder to public read access before sending the repository to the organizers.
